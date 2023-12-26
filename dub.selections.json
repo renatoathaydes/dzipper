@@ -1,0 +1,7 @@
+{
+	"fileVersion": 1,
+	"versions": {
+		"console-colors": "1.1.1",
+		"fswatch": "0.6.1"
+	}
+}
