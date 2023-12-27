@@ -1,10 +1,12 @@
 import std.getopt;
-import std.file : read, write, mkdirRecurse;
-import std.path : buildPath;
+import std.algorithm.iteration: each;
+import std.file : isDir, isFile, exists, read, write, dirEntries, mkdir, mkdirRecurse, SpanMode;
 import std.zip;
 import std.stdio : writeln, stderr;
 import std.sumtype;
+import std.exception : enforce;
 import consolecolors;
+import paths = std.path;
 
 import fswatcher;
 import zip_writer;
@@ -32,10 +34,8 @@ int main(string[] args)
     {
         const opts = parseOpts(args);
         return opts.match!(
-                (Opts o) {
-                run(o); return 0;
-            },
-                (int code) => code
+            (Opts o) { run(o); return 0; },
+            (int code) => code
         );
     }
     catch (Exception e)
@@ -58,7 +58,7 @@ private OptsResult parseOpts(string[] args)
     OptsResult result;
     Opts opts;
     auto help = getopt(args,
-    "verbose|V", &opts.verbose);
+        "verbose|V", &opts.verbose);
     if (help.helpWanted)
     {
         cwriteln("<blue>####### dzipper #######</blue>");
@@ -87,6 +87,8 @@ private void run(Opts opts)
     zipFile = opts.zipFile,
     outDir = opts.outDir;
 
+    checkOutDir(outDir, verbose);
+
     log(verbose, "Reading zip file: ", zipFile);
     auto zip = new ZipArchive(read(zipFile));
 
@@ -95,34 +97,62 @@ private void run(Opts opts)
     startFswatcher(dirs, verbose, &writer.onChange);
 }
 
+private void checkOutDir(string outDir, bool verbose)
+{
+    if (outDir.exists)
+    {
+        enforce(outDir.isDir, "output is not a directory");
+        enforce(outDir.dirEntries(SpanMode.shallow).empty, "output directory must be empty");
+    }
+    else
+    {
+        log(verbose, "Creating mount directory");
+        mkdirRecurse(outDir);
+    }
+}
+
 private string[] mountDir(string outDir, ZipArchive zip, bool verbose)
 {
-    string[] dirs;
-    dirs ~= outDir;
+    bool[string] dirs;
+    dirs[outDir] = true;
     foreach (name, am; zip.directory)
     {
-        if (name.isDir)
+        if (name.isDirPath)
         {
-            const p = buildPath(outDir, name);
-            log(verbose, "Creating directory: ", p);
-            mkdirRecurse(p);
-            dirs ~= p;
+          auto newDirs = outDir.makeDir(name, verbose);
+          newDirs.each!(d => dirs[d] = true);
         }
     }
     foreach (name, am; zip.directory)
     {
-        if (!name.isDir)
+        if (!name.isDirPath)
         {
-            const p = buildPath(outDir, name);
+            outDir.makeDir(paths.dirName(name), verbose);
+            const p = paths.buildPath(outDir, name);
             log(verbose, "Creating file: ", p);
             const contents = zip.expand(am);
             write(p, contents);
         }
     }
-    return dirs;
+    return dirs.keys;
 }
 
-private bool isDir(string path) pure
+private string[] makeDir(string outDir, string name, bool verbose) {
+  string[] result;
+  auto currentDir = name;
+  while(currentDir != "" && currentDir != "." && currentDir != paths.dirSeparator) {
+    result ~= outDir ~ paths.dirSeparator ~ currentDir;
+    currentDir = paths.dirName(currentDir);
+  }
+  if (result.length > 0) {
+    const dir = result[0];
+    log(verbose, "Creating directory: ", dir);
+    mkdirRecurse(dir);
+  }
+  return result;
+}
+
+private bool isDirPath(string path) pure
 {
     return path[$ - 1] == '/';
 }
