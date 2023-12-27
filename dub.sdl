@@ -1,5 +1,5 @@
 name "dzipper"
-description "A minimal D application."
+description "A CLI utility to edit zip files as a locally mounted directory."
 authors "Renato Athaydes"
 copyright "Copyright © 2023, Renato Athaydes"
 license "MIT"
