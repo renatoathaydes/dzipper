@@ -1,16 +1,16 @@
 import std.getopt;
-import std.algorithm.iteration: each;
-import std.file : isDir, isFile, exists, read, write, dirEntries, mkdir, mkdirRecurse, SpanMode;
-import std.zip;
-import std.stdio : writeln, stderr;
-import std.sumtype;
+import std.stdio;
 import std.exception : enforce;
-import consolecolors;
-import paths = std.path;
+import std.mmfile;
+import std.algorithm.searching;
+import std.bitmanip : nativeToLittleEndian;
+import std.range : retro, take, slide, iota;
+import std.typecons : Nullable;
+import std.sumtype : SumType, match;
 
-import fswatcher;
-import zip_writer;
-import logging;
+import consolecolors;
+
+immutable(ubyte[]) EOCD_SIGNATURE = nativeToLittleEndian!uint(0x06064b50)[0 .. $];
 
 const USAGE = "
 dzipper mounts a zip file on a local directory and then keeps track of changes
@@ -22,34 +22,40 @@ Usage:
 struct Opts
 {
     string zipFile;
-    string outDir;
     bool verbose;
 }
 
 alias OptsResult = SumType!(Opts, int);
 
-int main(string[] args)
+version (unittest)
 {
-    try
-    {
-        const opts = parseOpts(args);
-        return opts.match!(
-            (Opts o) { run(o); return 0; },
-            (int code) => code
-        );
-    }
-    catch (Exception e)
-    {
-        version (assert)
-        {
-            stderr.writeln("Unexpected error: ", e);
-        }
-        else
-        {
-            stderr.writeln("Unexpected error: ", e.msg);
-        }
+}
+else
+{
 
-        return 1;
+    int main(string[] args)
+    {
+        try
+        {
+            const opts = parseOpts(args);
+            return opts.match!(
+                (Opts o) => run(o),
+                (int code) => code
+            );
+        }
+        catch (Exception e)
+        {
+            version (assert)
+            {
+                stderr.writeln("Unexpected error: ", e);
+            }
+            else
+            {
+                stderr.writeln("Unexpected error: ", e.msg);
+            }
+
+            return 1;
+        }
     }
 }
 
@@ -73,86 +79,138 @@ private OptsResult parseOpts(string[] args)
     }
     else
     {
-        opts.zipFile = args[1], opts.outDir = args[2];
+        opts.zipFile = args[1];
         result = opts;
     }
 
     return result;
 }
 
-private void run(Opts opts)
+private int run(Opts opts)
 {
     const
     verbose = opts.verbose,
-    zipFile = opts.zipFile,
-    outDir = opts.outDir;
+    zipFile = opts.zipFile;
 
-    checkOutDir(outDir, verbose);
-
-    log(verbose, "Reading zip file: ", zipFile);
-    auto zip = new ZipArchive(read(zipFile));
-
-    auto writer = ZipWriter(zip, zipFile, outDir);
-    auto dirs = outDir.mountDir(zip, verbose);
-    startFswatcher(dirs, verbose, &writer.onChange);
+    auto file = new MmFile(zipFile);
+    writefln("file length: %d", file.length);
+    ubyte[] bytes = cast(ubyte[])(file[0 .. $]);
+    if (bytes.length < 22)
+    {
+        stderr.writeln("not a zip file");
+        return 1;
+    }
+    auto eocd_index = findEocd(bytes);
+    if (eocd_index.isNull)
+    {
+        stderr.writeln("Unable to locate zip metadata");
+        return 1;
+    }
+    writeln(eocd_index);
+    return 0;
 }
 
-private void checkOutDir(string outDir, bool verbose)
+private Nullable!size_t findEocd(size_t windowLen = 56)(in ubyte[] bytes) pure
+if (windowLen > 7)
 {
-    if (outDir.exists)
-    {
-        enforce(outDir.isDir, "output is not a directory");
-        enforce(outDir.dirEntries(SpanMode.shallow).empty, "output directory must be empty");
-    }
-    else
-    {
-        log(verbose, "Creating mount directory");
-        mkdirRecurse(outDir);
-    }
-}
+    Nullable!size_t result;
 
-private string[] mountDir(string outDir, ZipArchive zip, bool verbose)
-{
-    bool[string] dirs;
-    dirs[outDir] = true;
-    foreach (name, am; zip.directory)
+    if (bytes.length < 4)
+        return result;
+
+    // the EOCD can only appear in the last 65536 + 22 bytes
+    auto endBytes = bytes.retro.take(65_535 + 22).retro;
+
+    // windows overlap by 3 bytes so we can find the 4-byte marker even
+    // if it's split with one element on a chunk and the rest on another.
+    auto step = windowLen - 4;
+    auto windows = endBytes.slide(windowLen, step).retro;
+    auto idx = bytes.length;
+    auto i = 0;
+    foreach (window; windows)
     {
-        if (name.isDirPath)
+        auto foundRange = window.find(EOCD_SIGNATURE);
+        if (foundRange.length > 0)
         {
-          auto newDirs = outDir.makeDir(name, verbose);
-          newDirs.each!(d => dirs[d] = true);
+            idx -= foundRange.length;
+            result = idx;
+            return result;
         }
+        idx -= step;
+        i++;
     }
-    foreach (name, am; zip.directory)
-    {
-        if (!name.isDirPath)
-        {
-            outDir.makeDir(paths.dirName(name), verbose);
-            const p = paths.buildPath(outDir, name);
-            log(verbose, "Creating file: ", p);
-            const contents = zip.expand(am);
-            write(p, contents);
-        }
-    }
-    return dirs.keys;
+    return result;
 }
 
-private string[] makeDir(string outDir, string name, bool verbose) {
-  string[] result;
-  auto currentDir = name;
-  while(currentDir != "" && currentDir != "." && currentDir != paths.dirSeparator) {
-    result ~= outDir ~ paths.dirSeparator ~ currentDir;
-    currentDir = paths.dirName(currentDir);
-  }
-  if (result.length > 0) {
-    const dir = result[0];
-    log(verbose, "Creating directory: ", dir);
-    mkdirRecurse(dir);
-  }
-  return result;
-}
-
-private bool isDirPath(string path) pure
+version (unittest)
 {
-    return path[$ - 1] == '/';
+
+    import std.algorithm.iteration : map;
+    import std.array : array;
+    import std.conv : to;
+
+    ubyte[] newBytes(size_t len)
+    {
+        return iota(0, len).map!(i => (i % 0xff).to!ubyte).array();
+    }
+
+    // single window, EOCD near the beginning
+    unittest
+    {
+        auto bytes = newBytes(16);
+        bytes[1 .. 5] = EOCD_SIGNATURE;
+        auto result = bytes.findEocd();
+        assert(!result.isNull);
+        assert(result.get == 1, "result was " ~ result.to!string);
+
+        bytes = newBytes(16);
+        bytes[4 .. 8] = EOCD_SIGNATURE;
+        result = bytes.findEocd();
+        assert(!result.isNull);
+        assert(result.get == 4, "result was " ~ result.to!string);
+    }
+
+    // array spanning multiple windows, EOCD near the beginning
+    unittest
+    {
+        enum windowLen = 8;
+        auto bytes = newBytes(16);
+        bytes[1 .. 5] = EOCD_SIGNATURE;
+        auto result = bytes.findEocd!(windowLen);
+        assert(!result.isNull);
+        assert(result.get == 1, "result was " ~ result.to!string);
+
+        bytes[2 .. 6] = EOCD_SIGNATURE;
+        result = bytes.findEocd!(windowLen);
+        assert(!result.isNull);
+        assert(result.get == 2, "result was " ~ result.to!string);
+    }
+
+    // large array spanning multiple windows, EOCD near the end
+    unittest
+    {
+        auto bytes = newBytes(4096);
+        bytes[4092 .. 4096] = EOCD_SIGNATURE;
+        auto result = bytes.findEocd();
+        assert(!result.isNull);
+        assert(result.get == 4092, "result was " ~ result.to!string);
+
+        bytes = newBytes(4096);
+        bytes[4090 .. 4094] = EOCD_SIGNATURE;
+        result = bytes.findEocd();
+        assert(!result.isNull);
+        assert(result.get == 4090, "result was " ~ result.to!string);
+    }
+
+    // large array spanning multiple windows, EOCD exactly at beginning of last window
+    unittest
+    {
+        enum windowLen = 8;
+        auto bytes = newBytes(4096);
+        bytes[4088 .. 4092] = EOCD_SIGNATURE;
+        auto result = bytes.findEocd!(windowLen);
+        assert(!result.isNull);
+        assert(result.get == 4088, "result was " ~ result.to!string);
+    }
+
 }

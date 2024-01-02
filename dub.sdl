@@ -1,9 +1,15 @@
 name "dzipper"
-description "A CLI utility to edit zip files as a locally mounted directory."
+description "A library and CLI utility for managing Zip archive metadata."
 authors "Renato Athaydes"
 copyright "Copyright © 2023, Renato Athaydes"
 license "MIT"
-lflags "-ld_classic"
-targetType "executable"
-
 dependency "console-colors" version="~>1.1.1"
+targetType "executable"
+lflags "-ld_classic"
+configuration "unittest" {
+	targetType "library"
+    dependency "tested" version="~>0.9.5"
+}
+configuration "exe" {
+    targetType "executable"
+}
