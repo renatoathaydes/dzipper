@@ -148,13 +148,14 @@ version (unittest)
     import std.algorithm.iteration : map;
     import std.array : array;
     import std.conv : to;
+    import tested;
 
     ubyte[] newBytes(size_t len)
     {
         return iota(0, len).map!(i => (i % 0xff).to!ubyte).array();
     }
 
-    // single window, EOCD near the beginning
+    @name("single window, EOCD near the beginning")
     unittest
     {
         auto bytes = newBytes(16);
@@ -170,7 +171,7 @@ version (unittest)
         assert(result.get == 4, "result was " ~ result.to!string);
     }
 
-    // array spanning multiple windows, EOCD near the beginning
+    @name("array spanning multiple windows, EOCD near the beginning")
     unittest
     {
         enum windowLen = 8;
@@ -186,7 +187,7 @@ version (unittest)
         assert(result.get == 2, "result was " ~ result.to!string);
     }
 
-    // large array spanning multiple windows, EOCD near the end
+    @name("large array spanning multiple windows, EOCD near the end")
     unittest
     {
         auto bytes = newBytes(4096);
@@ -202,7 +203,7 @@ version (unittest)
         assert(result.get == 4090, "result was " ~ result.to!string);
     }
 
-    // large array spanning multiple windows, EOCD exactly at beginning of last window
+    @name("large array spanning multiple windows, EOCD exactly at beginning of last window")
     unittest
     {
         enum windowLen = 8;
