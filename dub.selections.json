@@ -1,7 +1,7 @@
 {
 	"fileVersion": 1,
 	"versions": {
-		"console-colors": "1.1.1",
+		"console-colors": "1.2.0",
 		"dshould": "1.7.1",
 		"fswatch": "0.6.1",
 		"prettyprint": "1.0.9",

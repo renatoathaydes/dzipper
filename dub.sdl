@@ -3,17 +3,23 @@ description "A library and CLI utility for managing Zip archive metadata."
 authors "Renato Athaydes"
 copyright "Copyright © 2023, Renato Athaydes"
 license "MIT"
-dependency "console-colors" version="~>1.1.1"
-targetType "executable"
+dependency "console-colors" version="~>1.2.0"
+targetType "library"
 lflags "-ld_classic"
+
+configuration "library" {
+    excludedSourceFiles "source/test.d"
+    targetPath "target/lib"
+}
+
+configuration "exe" {
+    excludedSourceFiles "source/test.d"
+	targetType "executable"
+    targetPath "target/bin"
+}
+
 configuration "unittest" {
-	targetType "library"
     dependency "tested" version="~>0.9.5"
 	dependency "dshould" version="~>1.7.1"
-}
-configuration "exe" {
-	targetType "executable"
-}
-configuration "dylib" {
-    targetType "dynamicLibrary"
+    targetPath "target/test"
 }
