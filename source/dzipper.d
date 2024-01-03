@@ -1,3 +1,5 @@
+module dzipper;
+
 import std.getopt;
 import std.stdio;
 import std.exception : enforce;
@@ -10,14 +12,13 @@ import std.sumtype : SumType, match;
 
 import consolecolors;
 
-immutable(ubyte[]) EOCD_SIGNATURE = nativeToLittleEndian!uint(0x06064b50)[0 .. $];
+immutable(ubyte[]) EOCD_SIGNATURE = nativeToLittleEndian!uint(0x06054b50)[0 .. $];
 
 const USAGE = "
-dzipper mounts a zip file on a local directory and then keeps track of changes
-to files in that directory, reflecting that back in the zip archive.
+dzipper is a utiliy for displaying zip file metadata.
 
 Usage:
-  dzipper [<options>] <zip-file> <mount-dir>";
+  dzipper [<options>] <zip-file>";
 
 struct Opts
 {
@@ -71,7 +72,7 @@ private OptsResult parseOpts(string[] args)
         defaultGetoptPrinter(USAGE, help.options);
         result = 0;
     }
-    else if (args.length != 3)
+    else if (args.length != 2)
     {
         cwrite("<red>Error:</red> Please provide the required arguments: ");
         writeln("<zip-file> <out-dir>.");
@@ -97,20 +98,25 @@ private int run(Opts opts)
     ubyte[] bytes = cast(ubyte[])(file[0 .. $]);
     if (bytes.length < 22)
     {
-        stderr.writeln("not a zip file");
+        stderr.cwriteln("<yellow>Not a zip file (too short).</yellow>");
         return 1;
     }
     auto eocd_index = findEocd(bytes);
     if (eocd_index.isNull)
     {
-        stderr.writeln("Unable to locate zip metadata");
-        return 1;
+        stderr.cwriteln("<yellow>Unable to locate zip metadata (EOCD).</yellow>");
+        return 2;
     }
-    writeln(eocd_index);
+    if (verbose)
+    {
+        writeln("Found EOCD at offset ", eocd_index);
+    }
+
+    cwriteln("<green>File appears to be a zip file</green>");
     return 0;
 }
 
-private Nullable!size_t findEocd(size_t windowLen = 56)(in ubyte[] bytes) pure
+Nullable!size_t findEocd(size_t windowLen = 56)(in ubyte[] bytes) pure @nogc
 if (windowLen > 7)
 {
     Nullable!size_t result;
@@ -121,7 +127,7 @@ if (windowLen > 7)
     // the EOCD can only appear in the last 65536 + 22 bytes
     auto endBytes = bytes.retro.take(65_535 + 22).retro;
 
-    // windows overlap by 3 bytes so we can find the 4-byte marker even
+    // windows overlap by 4 bytes so we can find the 4-byte marker even
     // if it's split with one element on a chunk and the rest on another.
     auto step = windowLen - 4;
     auto windows = endBytes.slide(windowLen, step).retro;

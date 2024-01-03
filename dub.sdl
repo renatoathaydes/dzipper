@@ -9,7 +9,11 @@ lflags "-ld_classic"
 configuration "unittest" {
 	targetType "library"
     dependency "tested" version="~>0.9.5"
+	dependency "dshould" version="~>1.7.1"
 }
 configuration "exe" {
-    targetType "executable"
+	targetType "executable"
+}
+configuration "dylib" {
+    targetType "dynamicLibrary"
 }
