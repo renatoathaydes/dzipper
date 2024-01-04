@@ -1,0 +1,31 @@
+name: DZipper CI
+
+on: [push, pull_request]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macOS-latest]
+        dc: [dmd-latest, ldc-latest]
+
+    runs-on: ${{ matrix.os }}
+    steps:
+    - uses: actions/checkout@v3
+    - uses: dlang-community/setup-dlang@4c99aa991ce7d19dd3064de0a4f2f6b2f152e2d7
+
+    - name: 'Build lib'
+      run: |
+        dub build
+
+    - name: 'Build exe'
+      run: |
+        dub build -c exe
+
+    - name: 'Test'
+      run: |
+        dub test --compiler=$DC
