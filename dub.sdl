@@ -7,7 +7,7 @@ dependency "console-colors" version="~>1.2.0"
 targetType "library"
 
 # fixes linking issues on Mac (only x86, not needed on Mac ARM)
-lflags "-ld_classic" platform="macos-x86_64"
+lflags "-ld_classic" platform="osx-x86_64"
 
 configuration "library" {
     excludedSourceFiles "source/test.d" "source/dzipper/main.d"
