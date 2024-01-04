@@ -10,29 +10,29 @@ public import dzipper.options;
 public import dzipper.parser;
 
 int main(string[] args)
+{
+    try
     {
-        try
-        {
-            const opts = parseOpts(args);
-            return opts.match!(
-                (Opts o) => run(o),
-                (int code) => code
-            );
-        }
-        catch (Exception e)
-        {
-            version (assert)
-            {
-                stderr.writeln("Unexpected error: ", e);
-            }
-            else
-            {
-                stderr.writeln("Unexpected error: ", e.msg);
-            }
-
-            return 1;
-        }
+        const opts = parseOpts(args);
+        return opts.match!(
+            (Opts o) => run(o),
+            (int code) => code
+        );
     }
+    catch (Exception e)
+    {
+        version (assert)
+        {
+            stderr.writeln("Unexpected error: ", e);
+        }
+        else
+        {
+            stderr.writeln("Unexpected error: ", e.msg);
+        }
+
+        return 1;
+    }
+}
 
 private int run(Opts opts)
 {
