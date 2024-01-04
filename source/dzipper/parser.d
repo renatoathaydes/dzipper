@@ -1,123 +1,16 @@
-module dzipper;
+module dzipper.parser;
 
-import std.getopt;
+import std.typecons : Nullable;
+import std.algorithm.searching;
 import std.stdio;
 import std.exception : enforce;
-import std.mmfile;
-import std.algorithm.searching;
 import std.bitmanip : nativeToLittleEndian;
 import std.range : retro, take, slide, iota;
-import std.typecons : Nullable;
-import std.sumtype : SumType, match;
-
-import consolecolors;
 
 immutable(ubyte[]) EOCD_SIGNATURE = nativeToLittleEndian!uint(0x06054b50)[0 .. $];
 
-const USAGE = "
-dzipper is a utiliy for displaying zip file metadata.
-
-Usage:
-  dzipper [<options>] <zip-file>";
-
-struct Opts
-{
-    string zipFile;
-    bool verbose;
-}
-
-alias OptsResult = SumType!(Opts, int);
-
-version (unittest)
-{
-}
-else
-{
-
-    int main(string[] args)
-    {
-        try
-        {
-            const opts = parseOpts(args);
-            return opts.match!(
-                (Opts o) => run(o),
-                (int code) => code
-            );
-        }
-        catch (Exception e)
-        {
-            version (assert)
-            {
-                stderr.writeln("Unexpected error: ", e);
-            }
-            else
-            {
-                stderr.writeln("Unexpected error: ", e.msg);
-            }
-
-            return 1;
-        }
-    }
-}
-
-private OptsResult parseOpts(string[] args)
-{
-    OptsResult result;
-    Opts opts;
-    auto help = getopt(args,
-        "verbose|V", &opts.verbose);
-    if (help.helpWanted)
-    {
-        cwriteln("<blue>####### dzipper #######</blue>");
-        defaultGetoptPrinter(USAGE, help.options);
-        result = 0;
-    }
-    else if (args.length != 2)
-    {
-        cwrite("<red>Error:</red> Please provide the required arguments: ");
-        writeln("<zip-file> <out-dir>.");
-        result = 3;
-    }
-    else
-    {
-        opts.zipFile = args[1];
-        result = opts;
-    }
-
-    return result;
-}
-
-private int run(Opts opts)
-{
-    const
-    verbose = opts.verbose,
-    zipFile = opts.zipFile;
-
-    auto file = new MmFile(zipFile);
-    writefln("file length: %d", file.length);
-    ubyte[] bytes = cast(ubyte[])(file[0 .. $]);
-    if (bytes.length < 22)
-    {
-        stderr.cwriteln("<yellow>Not a zip file (too short).</yellow>");
-        return 1;
-    }
-    auto eocd_index = findEocd(bytes);
-    if (eocd_index.isNull)
-    {
-        stderr.cwriteln("<yellow>Unable to locate zip metadata (EOCD).</yellow>");
-        return 2;
-    }
-    if (verbose)
-    {
-        writeln("Found EOCD at offset ", eocd_index);
-    }
-
-    cwriteln("<green>File appears to be a zip file</green>");
-    return 0;
-}
-
 Nullable!size_t findEocd(size_t windowLen = 56)(in ubyte[] bytes) pure @nogc
-if (windowLen > 7)
+        if (windowLen > 7)
 {
     Nullable!size_t result;
 
