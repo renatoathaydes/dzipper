@@ -5,11 +5,12 @@ copyright "Copyright © 2023, Renato Athaydes"
 license "MIT"
 dependency "console-colors" version="~>1.2.0"
 targetType "library"
-importPaths "source" "source/dzipper"
-lflags "-ld_classic"
+
+# fixes linking issues on Mac (only x86, not needed on Mac ARM)
+lflags "-ld_classic" platform="macos-x86_64"
 
 configuration "library" {
-    excludedSourceFiles "source/test.d"
+    excludedSourceFiles "source/test.d" "source/dzipper/main.d"
     targetPath "target/lib"
 }
 
@@ -20,6 +21,7 @@ configuration "exe" {
 }
 
 configuration "unittest" {
+    excludedSourceFiles "source/dzipper/main.d"
     dependency "tested" version="~>0.9.5"
 	dependency "dshould" version="~>1.7.1"
     targetPath "target/test"
