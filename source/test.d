@@ -1,13 +1,23 @@
 module test;
 
 import std.zip;
-import std.stdio : writefln;
 import std.string : representation;
 
 import tested;
 
-import dzipper : findEocd;
+import dzipper;
 import dshould;
+
+import std.random;
+import std.range : iota, array;
+import std.algorithm.iteration : map;
+
+ubyte[] randomBytes(size_t count)
+{
+    auto rand = Random(42);
+    auto bytes = iota(0, ubyte.max).map!(b => cast(ubyte) b);
+    return randomSample(bytes, 16, bytes.length, rand).array;
+}
 
 @name("can inspect real zip file")
 unittest
@@ -23,4 +33,26 @@ unittest
     auto bytes = zip.data();
     auto eocd_index = findEocd(bytes);
     eocd_index.should.equal(105);
+}
+
+@name("empty file is not a zip file")
+unittest
+{
+    findEocd([]).isNull.should.equal(true);
+}
+
+@name("random bytes are not a zip file")
+unittest
+{
+    findEocd(randomBytes(16)).isNull.should.equal(true);
+    findEocd(randomBytes(256)).isNull.should.equal(true);
+}
+
+@name("random bytes are not a zip file even if containing EOCD bytes")
+unittest
+{
+    auto bytes = randomBytes(256);
+    bytes[0 .. 4] = EOCD_SIGNATURE;
+    // FIXME
+    findEocd(bytes).isNull.should.equal(true);
 }
