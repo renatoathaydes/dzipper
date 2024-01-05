@@ -53,6 +53,5 @@ unittest
 {
     auto bytes = randomBytes(256);
     bytes[0 .. 4] = EOCD_SIGNATURE;
-    // FIXME
     findEocd(bytes).isNull.should.equal(true);
 }

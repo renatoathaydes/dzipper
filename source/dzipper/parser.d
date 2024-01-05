@@ -1,16 +1,17 @@
 module dzipper.parser;
 
 import std.typecons : Nullable;
-import std.algorithm.searching;
-import std.stdio;
+import std.algorithm.searching : find;
 import std.exception : enforce;
-import std.bitmanip : nativeToLittleEndian;
-import std.range : retro, take, slide, iota;
+import std.bitmanip : nativeToLittleEndian, littleEndianToNative;
+import std.range : retro, take, slide;
 
 immutable(ubyte[]) EOCD_SIGNATURE = nativeToLittleEndian!uint(0x06054b50)[0 .. $];
+immutable(ubyte[]) CD_SIGNATURE = nativeToLittleEndian!uint(0x02014b50)[0 .. $];
 
-Nullable!size_t findEocd(size_t windowLen = 56)(in ubyte[] bytes) pure @nogc
-        if (windowLen > 7)
+Nullable!size_t findEocd(size_t windowLen = 56)(
+    in ubyte[] bytes, bool checkCdSignature = true
+) pure @nogc if (windowLen > 7)
 {
     Nullable!size_t result;
 
@@ -32,13 +33,28 @@ Nullable!size_t findEocd(size_t windowLen = 56)(in ubyte[] bytes) pure @nogc
         if (foundRange.length > 0)
         {
             idx -= foundRange.length;
-            result = idx;
-            return result;
+            if (!checkCdSignature || bytes.checkCdSignature(idx + 16))
+            {
+                result = idx;
+                return result;
+            }
         }
         idx -= step;
         i++;
     }
     return result;
+}
+
+private bool checkCdSignature(in ubyte[] bytes, size_t idx) pure @nogc
+{
+    if (idx + 4 >= bytes.length)
+        return false;
+    ubyte[4] startOfCd_bytes;
+    startOfCd_bytes = bytes[idx .. idx + 4];
+    auto startOfCd = littleEndianToNative!uint(startOfCd_bytes);
+    if (startOfCd >= idx)
+        return false;
+    return bytes[startOfCd .. startOfCd + 4] == CD_SIGNATURE;
 }
 
 version (unittest)
@@ -48,6 +64,7 @@ version (unittest)
     import std.array : array;
     import std.conv : to;
     import tested;
+    import std.range : iota;
 
     ubyte[] newBytes(size_t len)
     {
@@ -59,13 +76,13 @@ version (unittest)
     {
         auto bytes = newBytes(16);
         bytes[1 .. 5] = EOCD_SIGNATURE;
-        auto result = bytes.findEocd();
+        auto result = bytes.findEocd(false);
         assert(!result.isNull);
         assert(result.get == 1, "result was " ~ result.to!string);
 
         bytes = newBytes(16);
         bytes[4 .. 8] = EOCD_SIGNATURE;
-        result = bytes.findEocd();
+        result = bytes.findEocd(false);
         assert(!result.isNull);
         assert(result.get == 4, "result was " ~ result.to!string);
     }
@@ -76,12 +93,12 @@ version (unittest)
         enum windowLen = 8;
         auto bytes = newBytes(16);
         bytes[1 .. 5] = EOCD_SIGNATURE;
-        auto result = bytes.findEocd!(windowLen);
+        auto result = bytes.findEocd!(windowLen)(false);
         assert(!result.isNull);
         assert(result.get == 1, "result was " ~ result.to!string);
 
         bytes[2 .. 6] = EOCD_SIGNATURE;
-        result = bytes.findEocd!(windowLen);
+        result = bytes.findEocd!(windowLen)(false);
         assert(!result.isNull);
         assert(result.get == 2, "result was " ~ result.to!string);
     }
@@ -91,13 +108,13 @@ version (unittest)
     {
         auto bytes = newBytes(4096);
         bytes[4092 .. 4096] = EOCD_SIGNATURE;
-        auto result = bytes.findEocd();
+        auto result = bytes.findEocd(false);
         assert(!result.isNull);
         assert(result.get == 4092, "result was " ~ result.to!string);
 
         bytes = newBytes(4096);
         bytes[4090 .. 4094] = EOCD_SIGNATURE;
-        result = bytes.findEocd();
+        result = bytes.findEocd(false);
         assert(!result.isNull);
         assert(result.get == 4090, "result was " ~ result.to!string);
     }
@@ -108,7 +125,7 @@ version (unittest)
         enum windowLen = 8;
         auto bytes = newBytes(4096);
         bytes[4088 .. 4092] = EOCD_SIGNATURE;
-        auto result = bytes.findEocd!(windowLen);
+        auto result = bytes.findEocd!(windowLen)(false);
         assert(!result.isNull);
         assert(result.get == 4088, "result was " ~ result.to!string);
     }
