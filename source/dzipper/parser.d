@@ -6,9 +6,25 @@ import std.exception : enforce;
 import std.bitmanip : nativeToLittleEndian, littleEndianToNative;
 import std.range : retro, take, slide;
 
+/** The End of Central Directory Signature. */
 immutable(ubyte[]) EOCD_SIGNATURE = nativeToLittleEndian!uint(0x06054b50)[0 .. $];
+
+/** The Central Directory Signature. */
 immutable(ubyte[]) CD_SIGNATURE = nativeToLittleEndian!uint(0x02014b50)[0 .. $];
 
+/** 
+ * Find the End of Central Directory (EOCD).
+ *
+ * This method can be used to identify whether a file is a Zip Archive because if the
+ * EOCD cannot be found, then the file is not a Zip file (unless corrupted).
+ *
+ * Params:
+ *   bytes = the bytes to inspect
+ *   checkCdSignature = whether to check the Central Directory's signature.
+ * Returns: index of the End of Central Directory if it can be found, null otherwise.
+ * Standards: PKWARE Zip File Format Specification Version 6.3.10
+ * See_Also: https://pkware.cachefly.net/webdocs/APPNOTE/APPNOTE-6.3.10.TXT
+ */
 Nullable!size_t findEocd(size_t windowLen = 56)(
     in ubyte[] bytes, bool checkCdSignature = true
 ) pure @nogc if (windowLen > 7)
