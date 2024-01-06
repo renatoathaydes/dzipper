@@ -58,7 +58,19 @@ private int run(Opts opts)
     {
         writeln("Found EOCD at offset ", eocd_index);
     }
+    auto eocd = parseEocd(bytes[eocd_index.get .. $]);
+
+    if (verbose)
+    {
+        writeln(eocd);
+    }
 
     cwriteln("<green>File appears to be a zip file</green>");
+
+    if (eocd.totalCentralDirectoriesCount == 0)
+    {
+        cwriteln("<yellow>Warning: empty zip file.</yellow>");
+    }
+
     return 0;
 }

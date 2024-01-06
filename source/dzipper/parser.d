@@ -2,15 +2,65 @@ module dzipper.parser;
 
 import std.typecons : Nullable;
 import std.algorithm.searching : find;
-import std.exception : enforce;
-import std.bitmanip : nativeToLittleEndian, littleEndianToNative;
+import std.exception : enforce, basicExceptionCtors;
+import std.bitmanip : nativeToLittleEndian, littleEndianToNative, peek, Endian;
 import std.range : retro, take, slide;
+
+import model;
+import std.string;
 
 /** The End of Central Directory Signature. */
 immutable(ubyte[]) EOCD_SIGNATURE = nativeToLittleEndian!uint(0x06054b50)[0 .. $];
 
 /** The Central Directory Signature. */
 immutable(ubyte[]) CD_SIGNATURE = nativeToLittleEndian!uint(0x02014b50)[0 .. $];
+
+enum ZipParseError
+{
+    InvalidEocd,
+}
+
+class ZipParseException : Exception
+{
+    ZipParseError error;
+    string msg;
+
+    this(ZipParseError error, string msg, string file = __FILE__, size_t line = __LINE__,
+        Throwable next = null) @nogc @safe pure nothrow
+    {
+        super(msg, file, line, next);
+        this.error = error;
+    }
+}
+
+private T peeks(T)(in ubyte[] bytes) =>
+    peek!(T, Endian.littleEndian)(bytes);
+
+EndOfCentralDirectory parseEocd(in ubyte[] bytes)
+{
+    // assert(bytes[0 .. 4] == EOCD_SIGNATURE);
+    if (bytes.length < 22)
+        throw new ZipParseException(ZipParseError.InvalidEocd, "too short to be EOCD");
+    auto commentLen = peeks!ushort(bytes[20 .. 22]);
+    if (bytes.length < 22 + commentLen)
+        throw new ZipParseException(ZipParseError.InvalidEocd, "comment extends beyond buffer length");
+    ubyte[] comment = [];
+    if (commentLen)
+    {
+        comment = bytes[22 .. 22 + commentLen].dup;
+    }
+    EndOfCentralDirectory result = {
+        diskNumber: peeks!ushort(bytes[4 .. 6]),
+        centralDirectoryDiskNumber: peeks!ushort(bytes[6 .. 8]),
+        diskCentralDirectoriesCount: peeks!ushort(bytes[8 .. 10]),
+        totalCentralDirectoriesCount: peeks!ushort(bytes[10 .. 12]),
+        centralDirectorySize: peeks!uint(bytes[12 .. 16]),
+        startOfCentralDirectory: peeks!uint(bytes[16 .. 20]),
+        commentLength: commentLen,
+        comment: comment,
+    };
+    return result;
+}
 
 /** 
  * Find the End of Central Directory (EOCD).
@@ -75,12 +125,15 @@ private bool checkCdSignature(in ubyte[] bytes, size_t idx) pure @nogc
 
 version (unittest)
 {
-
     import std.algorithm.iteration : map;
     import std.array : array;
     import std.conv : to;
-    import tested;
     import std.range : iota;
+    import std.conv : octal, hexString;
+    import std.bitmanip : swapEndian;
+    import std.algorithm.iteration : map;
+    import tested;
+    import dshould;
 
     ubyte[] newBytes(size_t len)
     {
@@ -146,4 +199,34 @@ version (unittest)
         assert(result.get == 4088, "result was " ~ result.to!string);
     }
 
+    @name("cannot parse empty EOCD")
+    unittest
+    {
+        parseEocd([]).should.throwA!ZipParseException
+            .where.error.should.equal(ZipParseError.InvalidEocd);
+    }
+
+    @name("cannot parse too short EOCD")
+    unittest
+    {
+        parseEocd(EOCD_SIGNATURE).should.throwA!ZipParseException
+            .where.error.should.equal(ZipParseError.InvalidEocd);
+    }
+
+    @name("can parse valid EOCD")
+    unittest
+    {
+        ubyte[] eocdData = cast(ubyte[]) hexString!"504b0506 0100 0200 0300 0400 05000000 06000000 0000";
+        EndOfCentralDirectory eocd = {
+            diskNumber: 1,
+            centralDirectoryDiskNumber: 2,
+            diskCentralDirectoriesCount: 3,
+            totalCentralDirectoriesCount: 4,
+            centralDirectorySize: 5,
+            startOfCentralDirectory: 6,
+            commentLength: 0,
+            comment: [],
+        };
+        parseEocd(eocdData).should.equal(eocd);
+    }
 }
