@@ -1,6 +1,32 @@
 module model;
 
-struct EndOfCentralDirectory {
+import std.traits : FieldNameTuple;
+import std.format : FormatSpec;
+import std.array : appender;
+import std.conv : to;
+import std.range : put;
+
+private mixin template StructToString(S)
+{
+    void toString(scope void delegate(const(char)[]) sink,
+        FormatSpec!char fmt)
+    {
+        put(sink, typeid(S).toString);
+        put(sink, "(\n");
+        foreach (index, name; FieldNameTuple!S)
+        {
+            put(sink, "  ");
+            put(sink, name);
+            put(sink, ": ");
+            put(sink, this.tupleof[index].to!string);
+            put(sink, ",\n");
+        }
+        put(sink, ")");
+    }
+}
+
+struct EndOfCentralDirectory
+{
     ushort diskNumber;
     ushort centralDirectoryDiskNumber;
     ushort diskCentralDirectoriesCount;
@@ -9,9 +35,11 @@ struct EndOfCentralDirectory {
     uint startOfCentralDirectory;
     ushort commentLength;
     ubyte[] comment;
+    mixin StructToString!EndOfCentralDirectory;
 }
 
-private mixin template FileInformation() {
+private mixin template FileInformation()
+{
     ushort versionRequired;
     ushort generalPurposeBitFlag;
     ushort compressionMethod;
@@ -26,7 +54,8 @@ private mixin template FileInformation() {
     ubyte[] extraField;
 }
 
-struct CentralDirectory {
+struct CentralDirectory
+{
     mixin FileInformation;
     ushort versionMadeBy;
     ushort commentLength;
@@ -35,8 +64,11 @@ struct CentralDirectory {
     uint externalFileAttributes;
     uint startOfLocalFileHeader;
     ubyte[] comment;
+    mixin StructToString!CentralDirectory;
 }
 
-struct LocalFileHeader {
+struct LocalFileHeader
+{
     mixin FileInformation;
+    mixin StructToString!LocalFileHeader;
 }
