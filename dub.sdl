@@ -3,25 +3,27 @@ description "A library and CLI utility for managing Zip archive metadata."
 authors "Renato Athaydes"
 copyright "Copyright © 2023, Renato Athaydes"
 license "MIT"
-dependency "console-colors" version="~>1.2.0"
 targetType "library"
 
 # fixes linking issues on Mac (only x86, not needed on Mac ARM)
 lflags "-ld_classic" platform="osx-x86_64"
 
+sourcePaths "source/lib"
+importPaths "source/lib"
+
 configuration "library" {
-    excludedSourceFiles "source/test.d" "source/dzipper/main.d"
     targetPath "target/lib"
 }
 
 configuration "exe" {
-    excludedSourceFiles "source/test.d"
+    sourcePaths "source/cli"
+    dependency "console-colors" version="~>1.2.0"
 	targetType "executable"
     targetPath "target/bin"
 }
 
 configuration "unittest" {
-    excludedSourceFiles "source/dzipper/main.d"
+    sourcePaths "source/test"
     dependency "tested" version="~>0.9.5"
 	dependency "dshould" version="~>1.7.1"
     targetPath "target/test"
