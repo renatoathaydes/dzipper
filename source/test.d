@@ -12,7 +12,7 @@ import std.random;
 import std.range : iota, array;
 import std.algorithm.iteration : map;
 
-ubyte[] randomBytes(size_t count)
+private ubyte[] randomBytes(size_t count)
 {
     auto rand = Random(42);
     auto bytes = iota(0, ubyte.max).map!(b => cast(ubyte) b);

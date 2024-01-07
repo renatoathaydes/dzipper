@@ -6,8 +6,9 @@ import std.sumtype : match;
 
 import consolecolors;
 
-public import dzipper.options;
-public import dzipper.parser;
+import dzipper.model;
+import dzipper.options;
+import dzipper.parser;
 
 int main(string[] args)
 {
@@ -42,7 +43,7 @@ private int run(Opts opts)
 
     auto file = new MmFile(zipFile);
     writefln("file length: %d", file.length);
-    ubyte[] bytes = cast(ubyte[])(file[0 .. $]);
+    auto bytes = cast(ubyte[])(file[0 .. $]);
     if (bytes.length < 22)
     {
         stderr.cwriteln("<yellow>Not a zip file (too short).</yellow>");
@@ -56,7 +57,7 @@ private int run(Opts opts)
     }
     if (verbose)
     {
-        writeln("Found EOCD at offset ", eocd_index);
+        writeln("Found EOCD at offset ", eocd_index, ".");
     }
     auto eocd = parseEocd(bytes[eocd_index.get .. $]);
 
@@ -65,12 +66,33 @@ private int run(Opts opts)
         writeln(eocd);
     }
 
-    cwriteln("<green>File appears to be a zip file</green>");
+    cwriteln("<green>File appears to be a zip file.</green>");
 
     if (eocd.totalCentralDirectoriesCount == 0)
     {
         cwriteln("<yellow>Warning: empty zip file.</yellow>");
     }
+    else
+    {
+        auto suffix = eocd.totalCentralDirectoriesCount == 1 ? " entry." : " entries.";
+        writeln("Archive contains ", eocd.totalCentralDirectoriesCount, suffix);
+        bytes.checkCentralDirectories(eocd, verbose);
+    }
 
     return 0;
+}
+
+private void checkCentralDirectories(in ubyte[] bytes,
+    in EndOfCentralDirectory eocd, bool verbose)
+{
+    import std.range : iota;
+    uint offset = eocd.startOfCentralDirectory;
+    foreach (i; iota(0, eocd.diskCentralDirectoriesCount))
+    {
+        auto cd = parseCd(bytes[offset .. $]);
+        if (verbose) {
+            writeln(cd);
+        }
+        offset += cd.length();
+    }
 }

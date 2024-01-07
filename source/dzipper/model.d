@@ -1,4 +1,4 @@
-module model;
+module dzipper.model;
 
 import std.traits : FieldNameTuple;
 import std.format : FormatSpec;
@@ -25,6 +25,7 @@ private mixin template StructToString(S)
     }
 }
 
+/// End of central directory record.
 struct EndOfCentralDirectory
 {
     ushort diskNumber;
@@ -54,6 +55,7 @@ private mixin template FileInformation()
     ubyte[] extraField;
 }
 
+/// Central directory header.
 struct CentralDirectory
 {
     mixin FileInformation;
@@ -65,8 +67,16 @@ struct CentralDirectory
     uint startOfLocalFileHeader;
     ubyte[] comment;
     mixin StructToString!CentralDirectory;
+
+    /// The length of the CD in bytes (notice that the struct
+    /// does not include the CD signature).
+    size_t length()
+    {
+        return 46 + fileName.length + extraField.length + comment.length;
+    }
 }
 
+/// Local file header.
 struct LocalFileHeader
 {
     mixin FileInformation;

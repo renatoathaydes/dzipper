@@ -5,8 +5,9 @@ import std.algorithm.searching : find;
 import std.exception : enforce, basicExceptionCtors;
 import std.bitmanip : nativeToLittleEndian, littleEndianToNative, peek, Endian;
 import std.range : retro, take, slide;
+import std.conv : to;
 
-import model;
+import dzipper.model;
 import std.string;
 
 /** The End of Central Directory Signature. */
@@ -15,9 +16,13 @@ immutable(ubyte[]) EOCD_SIGNATURE = nativeToLittleEndian!uint(0x06054b50)[0 .. $
 /** The Central Directory Signature. */
 immutable(ubyte[]) CD_SIGNATURE = nativeToLittleEndian!uint(0x02014b50)[0 .. $];
 
+/// Reason why a Zip Archive's metadata couldn't be parsed.
 enum ZipParseError
 {
+    /// Invalid End of Central Directory.
     InvalidEocd,
+    /// Invalid Central Directory.
+    InvalidCd,
 }
 
 class ZipParseException : Exception
@@ -33,30 +38,113 @@ class ZipParseException : Exception
     }
 }
 
-private T peeks(T)(in ubyte[] bytes) =>
-    peek!(T, Endian.littleEndian)(bytes);
+private T peeks(T, size_t lo, size_t hi)(in ubyte[] bytes) if (T.sizeof == hi - lo) =>
+    peek!(T, Endian.littleEndian)(bytes[lo .. hi]);
 
-EndOfCentralDirectory parseEocd(in ubyte[] bytes)
+private ubyte[] extractField(inout ubyte[] bytes, size_t offset, size_t length,
+    lazy ZipParseException exception) @safe
 {
-    // assert(bytes[0 .. 4] == EOCD_SIGNATURE);
-    if (bytes.length < 22)
-        throw new ZipParseException(ZipParseError.InvalidEocd, "too short to be EOCD");
-    auto commentLen = peeks!ushort(bytes[20 .. 22]);
-    if (bytes.length < 22 + commentLen)
-        throw new ZipParseException(ZipParseError.InvalidEocd, "comment extends beyond buffer length");
-    ubyte[] comment = [];
-    if (commentLen)
+    ubyte[] result = [];
+    if (bytes.length < offset + length)
     {
-        comment = bytes[22 .. 22 + commentLen].dup;
+        throw exception();
     }
+    if (length > 0)
+    {
+        result = bytes[offset .. offset + length].dup;
+    }
+    return result;
+}
+
+/** 
+ * Parse the End of Central Directory record.
+ *
+ * Params:
+ *   bytes = slice starting at the End of Central Directory position.
+ * Returns: the End of Central Directory record.
+ * See_Also: findEocd
+ */
+EndOfCentralDirectory parseEocd(in ubyte[] bytes) @safe
+{
+    if (bytes.length < 22)
+    {
+        throw new ZipParseException(ZipParseError.InvalidEocd, "too short to be EOCD");
+    }
+    if (bytes[0 .. 4] != EOCD_SIGNATURE)
+    {
+        throw new ZipParseException(ZipParseError.InvalidEocd, "no EOCD signature");
+    }
+
+    auto commentLen = peeks!(ushort, 20, 22)(bytes);
+    auto comment = extractField(bytes, 22, commentLen,
+        new ZipParseException(
+            ZipParseError.InvalidEocd, "comment extends beyond buffer length"));
+
     EndOfCentralDirectory result = {
-        diskNumber: peeks!ushort(bytes[4 .. 6]),
-        centralDirectoryDiskNumber: peeks!ushort(bytes[6 .. 8]),
-        diskCentralDirectoriesCount: peeks!ushort(bytes[8 .. 10]),
-        totalCentralDirectoriesCount: peeks!ushort(bytes[10 .. 12]),
-        centralDirectorySize: peeks!uint(bytes[12 .. 16]),
-        startOfCentralDirectory: peeks!uint(bytes[16 .. 20]),
+        diskNumber: peeks!(ushort, 4, 6)(bytes),
+        centralDirectoryDiskNumber: peeks!(ushort, 6, 8)(bytes),
+        diskCentralDirectoriesCount: peeks!(ushort, 8, 10)(bytes),
+        totalCentralDirectoriesCount: peeks!(ushort, 10, 12)(bytes),
+        centralDirectorySize: peeks!(uint, 12, 16)(bytes),
+        startOfCentralDirectory: peeks!(uint, 16, 20)(bytes),
         commentLength: commentLen,
+        comment: comment,
+    };
+    return result;
+}
+
+/** 
+ * Parse a Central Directory header.
+ *
+ * Each entry in a Zip Archive is fully described by a Central Directory header.
+ * Params:
+ *   bytes = slice starting at the Central Directory position.
+ * Returns: the Central Directory header.
+ * See_Also: findEocd
+ */
+CentralDirectory parseCd(in ubyte[] bytes) @safe
+{
+    enum struct_len = 46;
+
+    if (bytes.length < struct_len)
+    {
+        throw new ZipParseException(ZipParseError.InvalidCd, "too short to be CD");
+    }
+    if (bytes[0 .. 4] != CD_SIGNATURE)
+    {
+        throw new ZipParseException(ZipParseError.InvalidCd, "no CD signature");
+    }
+    auto fileNameLength = peeks!(ushort, 28, 30)(bytes);
+    auto fileName = extractField(bytes, struct_len, fileNameLength,
+        new ZipParseException(ZipParseError.InvalidCd, "file name extends beyond buffer length"));
+
+    auto extraFieldLength = peeks!(ushort, 30, 32)(bytes);
+    auto extraField = extractField(bytes, struct_len + fileNameLength, extraFieldLength,
+        new ZipParseException(ZipParseError.InvalidCd, "extra field extends beyond buffer length"));
+
+    auto commentLength = peeks!(ushort, 32, 34)(bytes);
+    auto comment = extractField(bytes, struct_len + fileNameLength + extraFieldLength, commentLength,
+        new ZipParseException(ZipParseError.InvalidCd, "comment extends beyond buffer length"));
+
+    CentralDirectory result = {
+        versionMadeBy: peeks!(ushort, 4, 6)(bytes),
+        versionRequired: peeks!(ushort, 6, 8)(bytes),
+        generalPurposeBitFlag: peeks!(ushort, 8, 10)(bytes),
+        compressionMethod: peeks!(ushort, 10, 12)(bytes),
+        lastModificationTime: peeks!(ushort, 12, 14)(bytes),
+        lastModificationDate: peeks!(ushort, 14, 16)(bytes),
+        crc32: peeks!(uint, 16, 20)(bytes),
+        compressedSize: peeks!(uint, 20, 24)(bytes),
+        uncompressedSize: peeks!(uint, 24, 28)(bytes),
+        fileNameLength: fileNameLength,
+        extraFieldLength: extraFieldLength,
+        commentLength: commentLength,
+        diskNumber: peeks!(ushort, 34, 36)(bytes),
+        internalFileAttributes: peeks!(ushort, 36, 38)(bytes),
+        externalFileAttributes: peeks!(uint, 38, 42)(bytes),
+        startOfLocalFileHeader: peeks!(uint, 42, 46)(bytes),
+        fileName: fileName,
+        extraField: extraField,
         comment: comment,
     };
     return result;
@@ -77,7 +165,7 @@ EndOfCentralDirectory parseEocd(in ubyte[] bytes)
  */
 Nullable!size_t findEocd(size_t windowLen = 56)(
     in ubyte[] bytes, bool checkCdSignature = true
-) pure @nogc if (windowLen > 7)
+) pure @nogc @safe if (windowLen > 7)
 {
     Nullable!size_t result;
 
@@ -111,7 +199,7 @@ Nullable!size_t findEocd(size_t windowLen = 56)(
     return result;
 }
 
-private bool checkCdSignature(in ubyte[] bytes, size_t idx) pure @nogc
+private bool checkCdSignature(in ubyte[] bytes, size_t idx) pure @nogc @safe
 {
     if (idx + 4 >= bytes.length)
         return false;
@@ -127,7 +215,6 @@ version (unittest)
 {
     import std.algorithm.iteration : map;
     import std.array : array;
-    import std.conv : to;
     import std.range : iota;
     import std.conv : octal, hexString;
     import std.bitmanip : swapEndian;
@@ -228,5 +315,36 @@ version (unittest)
             comment: [],
         };
         parseEocd(eocdData).should.equal(eocd);
+    }
+
+    @name("can parse valid CD")
+    unittest
+    {
+        ubyte[] cdData = cast(ubyte[]) hexString!"504b0102 0100 0200 0300 0400 0500
+            0600 07000000 08000000 09000000 0200 0300 0000 0A00 0B00 0C000000 0D000000 ABCD 1A2B3C";
+        cdData.length.should.equal(46 + 2 + 3);
+        CentralDirectory cd = {
+            versionMadeBy: 1,
+            versionRequired: 2,
+            generalPurposeBitFlag: 3,
+            compressionMethod: 4,
+            lastModificationTime: 5,
+            lastModificationDate: 6,
+            crc32: 7,
+            compressedSize: 8,
+            uncompressedSize: 9,
+            fileNameLength: 2,
+            extraFieldLength: 3,
+            commentLength: 0,
+            diskNumber: 10,
+            internalFileAttributes: 11,
+            externalFileAttributes: 12,
+            startOfLocalFileHeader: 13,
+            fileName: [0xAB, 0xCD],
+            extraField: [0x1A, 0x2B, 0x3C],
+            comment: [],
+        };
+        cd.length().should.equal(46 + 2 + 3);
+        parseCd(cdData).should.equal(cd);
     }
 }
