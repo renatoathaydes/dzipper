@@ -51,7 +51,7 @@ private mixin template FileInformation()
     uint uncompressedSize;
     ushort fileNameLength;
     ushort extraFieldLength;
-    ubyte[] fileName;
+    char[] fileName;
     ubyte[] extraField;
 }
 

@@ -6,6 +6,7 @@ import std.exception : enforce, basicExceptionCtors;
 import std.bitmanip : nativeToLittleEndian, littleEndianToNative, peek, Endian;
 import std.range : retro, take, slide;
 import std.conv : to;
+import std.string : assumeUTF;
 
 import dzipper.model;
 import std.string;
@@ -116,7 +117,8 @@ CentralDirectory parseCd(in ubyte[] bytes) @safe
     }
     auto fileNameLength = peeks!(ushort, 28, 30)(bytes);
     auto fileName = extractField(bytes, struct_len, fileNameLength,
-        new ZipParseException(ZipParseError.InvalidCd, "file name extends beyond buffer length"));
+        new ZipParseException(ZipParseError.InvalidCd, "file name extends beyond buffer length"))
+        .assumeUTF;
 
     auto extraFieldLength = peeks!(ushort, 30, 32)(bytes);
     auto extraField = extractField(bytes, struct_len + fileNameLength, extraFieldLength,
@@ -321,7 +323,7 @@ version (unittest)
     unittest
     {
         ubyte[] cdData = cast(ubyte[]) hexString!"504b0102 0100 0200 0300 0400 0500
-            0600 07000000 08000000 09000000 0200 0300 0000 0A00 0B00 0C000000 0D000000 ABCD 1A2B3C";
+            0600 07000000 08000000 09000000 0200 0300 0000 0A00 0B00 0C000000 0D000000 4142 1A2B3C";
         cdData.length.should.equal(46 + 2 + 3);
         CentralDirectory cd = {
             versionMadeBy: 1,
@@ -340,7 +342,7 @@ version (unittest)
             internalFileAttributes: 11,
             externalFileAttributes: 12,
             startOfLocalFileHeader: 13,
-            fileName: [0xAB, 0xCD],
+            fileName: "AB".dup,
             extraField: [0x1A, 0x2B, 0x3C],
             comment: [],
         };
