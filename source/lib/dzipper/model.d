@@ -25,6 +25,39 @@ private mixin template StructToString(S)
     }
 }
 
+/// Zip Archive compression methods.
+enum CompressionMethod : ushort
+{
+    stored,
+    shrunk,
+    reduced_1,
+    reduced_2,
+    reduced_3,
+    reduced_4,
+    implodded,
+    reserved_for_tokenizing,
+    deflated,
+    deflate_64,
+    pkware_imploding,
+    reserved_pkware_1,
+    bzip_2,
+    reserved_pkware_2,
+    lzma,
+    reserved_pkware_3,
+    cmpsc,
+    reserved_pkware_4,
+    ibm_terse_new,
+    ibm_lz_77,
+    deprecated_zstd,
+    zstd = 93,
+    mp3,
+    xz,
+    jpeg,
+    wavpack,
+    ppmd_version_1,
+    ae_x_enc,
+}
+
 /// End of central directory record.
 struct EndOfCentralDirectory
 {
@@ -43,7 +76,7 @@ private mixin template FileInformation()
 {
     ushort versionRequired;
     ushort generalPurposeBitFlag;
-    ushort compressionMethod;
+    CompressionMethod compressionMethod;
     ushort lastModificationTime;
     ushort lastModificationDate;
     uint crc32;

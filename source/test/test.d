@@ -1,6 +1,6 @@
 module test;
 
-import std.zip;
+import std.zip : ZipArchive, ArchiveMember, CM = CompressionMethod;
 import std.string : representation;
 
 import tested;
@@ -26,7 +26,7 @@ unittest
     auto member = new ArchiveMember();
     member.name = "hello.txt";
     member.expandedData("Hello Zip".dup.representation);
-    member.compressionMethod = CompressionMethod.deflate;
+    member.compressionMethod = CM.deflate;
     zip.addMember(member);
     zip.build();
 
