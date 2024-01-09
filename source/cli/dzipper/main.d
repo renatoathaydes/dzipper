@@ -86,13 +86,20 @@ private void checkCentralDirectories(in ubyte[] bytes,
     in EndOfCentralDirectory eocd, bool verbose)
 {
     import std.range : iota;
+
     uint offset = eocd.startOfCentralDirectory;
     foreach (i; iota(0, eocd.diskCentralDirectoriesCount))
     {
         auto cd = parseCd(bytes[offset .. $]);
-        if (verbose) {
+        if (verbose)
+        {
             writeln(cd);
         }
         offset += cd.length();
+        auto lfh = parseLocalFileHeader(bytes[cd.startOfLocalFileHeader .. $]);
+        if (verbose)
+        {
+            writeln(lfh);
+        }
     }
 }

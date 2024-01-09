@@ -17,6 +17,9 @@ immutable(ubyte[]) EOCD_SIGNATURE = nativeToLittleEndian!uint(0x06054b50)[0 .. $
 /** The Central Directory Signature. */
 immutable(ubyte[]) CD_SIGNATURE = nativeToLittleEndian!uint(0x02014b50)[0 .. $];
 
+/** The Local File header Signature. */
+immutable(ubyte[]) LOCAL_FILE_SIGNATURE = nativeToLittleEndian!uint(0x04034b50)[0 .. $];
+
 /// Reason why a Zip Archive's metadata couldn't be parsed.
 enum ZipParseError
 {
@@ -24,6 +27,8 @@ enum ZipParseError
     InvalidEocd,
     /// Invalid Central Directory.
     InvalidCd,
+    /// Invalid Local File header.
+    InvalidLocalFileHeader,
 }
 
 class ZipParseException : Exception
@@ -148,6 +153,52 @@ CentralDirectory parseCd(in ubyte[] bytes) @safe
         fileName: fileName,
         extraField: extraField,
         comment: comment,
+    };
+    return result;
+}
+
+/** 
+ * Parse a Local File header.
+ *
+ * Params:
+ *   bytes = slice starting at the Local File header position.
+ * Returns: the Local File header.
+ */
+LocalFileHeader parseLocalFileHeader(in ubyte[] bytes) @safe
+{
+    enum struct_len = 30;
+
+    if (bytes.length < struct_len)
+    {
+        throw new ZipParseException(ZipParseError.InvalidLocalFileHeader, "too short to be Local File header");
+    }
+    if (bytes[0 .. 4] != LOCAL_FILE_SIGNATURE)
+    {
+        throw new ZipParseException(ZipParseError.InvalidLocalFileHeader, "no Local File header signature");
+    }
+
+    auto fileNameLength = peeks!(ushort, 26, 28)(bytes);
+    auto fileName = extractField(bytes, struct_len, fileNameLength,
+        new ZipParseException(ZipParseError.InvalidCd, "file name extends beyond buffer length"))
+        .assumeUTF;
+
+    auto extraFieldLength = peeks!(ushort, 28, 30)(bytes);
+    auto extraField = extractField(bytes, struct_len + fileNameLength, extraFieldLength,
+        new ZipParseException(ZipParseError.InvalidCd, "extra field extends beyond buffer length"));
+
+    LocalFileHeader result = {
+        versionRequired: peeks!(ushort, 4, 6)(bytes),
+        generalPurposeBitFlag: peeks!(ushort, 6, 8)(bytes),
+        compressionMethod: peeks!(ushort, 8, 10)(bytes),
+        lastModificationTime: peeks!(ushort, 10, 12)(bytes),
+        lastModificationDate: peeks!(ushort, 12, 14)(bytes),
+        crc32: peeks!(uint, 14, 18)(bytes),
+        compressedSize: peeks!(uint, 18, 22)(bytes),
+        uncompressedSize: peeks!(uint, 22, 26)(bytes),
+        fileNameLength: fileNameLength,
+        extraFieldLength: extraFieldLength,
+        fileName: fileName,
+        extraField: extraField,
     };
     return result;
 }
@@ -348,5 +399,29 @@ version (unittest)
         };
         cd.length().should.equal(46 + 2 + 3);
         parseCd(cdData).should.equal(cd);
+    }
+
+    @name("can parse valid Local File header")
+    unittest
+    {
+        ubyte[] lfhData = cast(ubyte[]) hexString!"504b0304 0200 0300 0400 0500
+            0600 07000000 08000000 09000000 0200 0300 4344 1A2B3C";
+        lfhData.length.should.equal(30 + 2 + 3);
+        LocalFileHeader lfh = {
+            versionRequired: 2,
+            generalPurposeBitFlag: 3,
+            compressionMethod: 4,
+            lastModificationTime: 5,
+            lastModificationDate: 6,
+            crc32: 7,
+            compressedSize: 8,
+            uncompressedSize: 9,
+            fileNameLength: 2,
+            extraFieldLength: 3,
+            fileName: "CD".dup,
+            extraField: [0x1A, 0x2B, 0x3C],
+        };
+        lfh.length().should.equal(30 + 2 + 3);
+        parseLocalFileHeader(lfhData).should.equal(lfh);
     }
 }

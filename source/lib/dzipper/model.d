@@ -81,4 +81,12 @@ struct LocalFileHeader
 {
     mixin FileInformation;
     mixin StructToString!LocalFileHeader;
+
+    /// The length of the header in bytes (notice that the struct
+    /// does not include the local file header signature).
+    size_t length()
+    {
+        return 30 + fileName.length + extraField.length;
+    }
+
 }
