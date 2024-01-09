@@ -5,6 +5,7 @@ import std.format : FormatSpec;
 import std.array : appender;
 import std.conv : to;
 import std.range : put;
+import std.datetime.systime : SysTime;
 
 private mixin template StructToString(S)
 {
@@ -77,8 +78,7 @@ private mixin template FileInformation()
     ushort versionRequired;
     ushort generalPurposeBitFlag;
     CompressionMethod compressionMethod;
-    ushort lastModificationTime;
-    ushort lastModificationDate;
+    SysTime lastModificationDateTime;
     uint crc32;
     uint compressedSize;
     uint uncompressedSize;

@@ -7,6 +7,7 @@ import std.bitmanip : nativeToLittleEndian, littleEndianToNative, peek, Endian;
 import std.range : retro, take, slide;
 import std.conv : to;
 import std.string : assumeUTF;
+import std.datetime.systime : DosFileTimeToSysTime, SysTime;
 
 import dzipper.model;
 import std.string;
@@ -133,13 +134,14 @@ CentralDirectory parseCd(in ubyte[] bytes) @safe
     auto comment = extractField(bytes, struct_len + fileNameLength + extraFieldLength, commentLength,
         new ZipParseException(ZipParseError.InvalidCd, "comment extends beyond buffer length"));
 
+    auto dateTime = toSysTime(peeks!(ushort, 14, 16)(bytes), peeks!(ushort, 12, 14)(bytes));
+
     CentralDirectory result = {
         versionMadeBy: peeks!(ushort, 4, 6)(bytes),
         versionRequired: peeks!(ushort, 6, 8)(bytes),
         generalPurposeBitFlag: peeks!(ushort, 8, 10)(bytes),
         compressionMethod: cast(CompressionMethod) peeks!(ushort, 10, 12)(bytes),
-        lastModificationTime: peeks!(ushort, 12, 14)(bytes),
-        lastModificationDate: peeks!(ushort, 14, 16)(bytes),
+        lastModificationDateTime: dateTime,
         crc32: peeks!(uint, 16, 20)(bytes),
         compressedSize: peeks!(uint, 20, 24)(bytes),
         uncompressedSize: peeks!(uint, 24, 28)(bytes),
@@ -177,6 +179,8 @@ LocalFileHeader parseLocalFileHeader(in ubyte[] bytes) @safe
         throw new ZipParseException(ZipParseError.InvalidLocalFileHeader, "no Local File header signature");
     }
 
+    auto dateTime = toSysTime(peeks!(ushort, 12, 14)(bytes), peeks!(ushort, 10, 12)(bytes));
+
     auto fileNameLength = peeks!(ushort, 26, 28)(bytes);
     auto fileName = extractField(bytes, struct_len, fileNameLength,
         new ZipParseException(ZipParseError.InvalidCd, "file name extends beyond buffer length"))
@@ -190,8 +194,7 @@ LocalFileHeader parseLocalFileHeader(in ubyte[] bytes) @safe
         versionRequired: peeks!(ushort, 4, 6)(bytes),
         generalPurposeBitFlag: peeks!(ushort, 6, 8)(bytes),
         compressionMethod: cast(CompressionMethod) peeks!(ushort, 8, 10)(bytes),
-        lastModificationTime: peeks!(ushort, 10, 12)(bytes),
-        lastModificationDate: peeks!(ushort, 12, 14)(bytes),
+        lastModificationDateTime: dateTime,
         crc32: peeks!(uint, 14, 18)(bytes),
         compressedSize: peeks!(uint, 18, 22)(bytes),
         uncompressedSize: peeks!(uint, 22, 26)(bytes),
@@ -262,6 +265,12 @@ private bool checkCdSignature(in ubyte[] bytes, size_t idx) pure @nogc @safe
     if (startOfCd >= idx)
         return false;
     return bytes[startOfCd .. startOfCd + 4] == CD_SIGNATURE;
+}
+
+private SysTime toSysTime(ushort date, ushort time) @safe
+{
+    uint datetime = (date << 16) + time;
+    return DosFileTimeToSysTime(datetime);
 }
 
 version (unittest)
@@ -373,16 +382,16 @@ version (unittest)
     @name("can parse valid CD")
     unittest
     {
-        ubyte[] cdData = cast(ubyte[]) hexString!"504b0102 0100 0200 0300 0400 0500
-            0600 07000000 08000000 09000000 0200 0300 0000 0A00 0B00 0C000000 0D000000 4142 1A2B3C";
+        ubyte[] cdData = cast(ubyte[]) hexString!"504b0102 0100 0200 0300 0400 2EA6
+            2458 07000000 08000000 09000000 0200 0300 0000 0A00 0B00 0C000000 0D000000 4142 1A2B3C";
         cdData.length.should.equal(46 + 2 + 3);
+        auto dateTime = toSysTime(22_564, 42_542);
         CentralDirectory cd = {
             versionMadeBy: 1,
             versionRequired: 2,
             generalPurposeBitFlag: 3,
             compressionMethod: cast(CompressionMethod) 4,
-            lastModificationTime: 5,
-            lastModificationDate: 6,
+            lastModificationDateTime: dateTime,
             crc32: 7,
             compressedSize: 8,
             uncompressedSize: 9,
@@ -404,15 +413,15 @@ version (unittest)
     @name("can parse valid Local File header")
     unittest
     {
-        ubyte[] lfhData = cast(ubyte[]) hexString!"504b0304 0200 0300 0400 0500
-            0600 07000000 08000000 09000000 0200 0300 4344 1A2B3C";
+        ubyte[] lfhData = cast(ubyte[]) hexString!"504b0304 0200 0300 0400 2EA6
+            2458 07000000 08000000 09000000 0200 0300 4344 1A2B3C";
         lfhData.length.should.equal(30 + 2 + 3);
+        auto dateTime = toSysTime(22_564, 42_542);
         LocalFileHeader lfh = {
             versionRequired: 2,
             generalPurposeBitFlag: 3,
             compressionMethod: CompressionMethod.reduced_3, // 4,
-            lastModificationTime: 5,
-            lastModificationDate: 6,
+            lastModificationDateTime: dateTime,
             crc32: 7,
             compressedSize: 8,
             uncompressedSize: 9,
