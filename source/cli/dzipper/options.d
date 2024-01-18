@@ -20,7 +20,7 @@ struct Opts
 
 alias OptsResult = SumType!(Opts, int);
 
-OptsResult parseOpts(in string[] args)
+OptsResult parseOpts(string[] args)
 {
     OptsResult result;
     Opts opts;
