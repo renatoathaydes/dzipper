@@ -4,14 +4,14 @@ import std.stdio : File, writeln;
 
 import dzipper.model, dzipper.parser;
 
-void printArchiveMetadata(in ubyte[] bytes, in EndOfCentralDirectory eocd, bool verbose)
+void printArchiveMetadata(B)(ref B bytes, in EndOfCentralDirectory eocd, bool verbose)
 {
     auto suffix = eocd.totalCentralDirectoriesCount == 1 ? " entry." : " entries.";
     writeln("Archive contains ", eocd.totalCentralDirectoriesCount, suffix);
     bytes.checkCentralDirectories(eocd, verbose);
 }
 
-private void checkCentralDirectories(in ubyte[] bytes,
+private void checkCentralDirectories(B)(ref B bytes,
     in EndOfCentralDirectory eocd, bool verbose)
 {
     import std.range : iota;
@@ -19,13 +19,13 @@ private void checkCentralDirectories(in ubyte[] bytes,
     uint offset = eocd.startOfCentralDirectory;
     foreach (i; iota(0, eocd.diskCentralDirectoriesCount))
     {
-        auto cd = parseCd(bytes[offset .. $]);
+        auto cd = parseCd(cast(ubyte[]) bytes[offset .. $]);
         if (verbose)
         {
             writeln(cd);
         }
         offset += cd.length;
-        auto lfh = parseLocalFileHeader(bytes[cd.startOfLocalFileHeader .. $]);
+        auto lfh = parseLocalFileHeader(cast(ubyte[]) bytes[cd.startOfLocalFileHeader .. $]);
         if (verbose)
         {
             writeln(lfh);
@@ -33,7 +33,7 @@ private void checkCentralDirectories(in ubyte[] bytes,
     }
 }
 
-void prependFileToArchive(in ubyte[] bytes, string prependFile, string zipFile, in EndOfCentralDirectory eocd, bool verbose)
+void prependFileToArchive(B)(ref B bytes, string prependFile, string zipFile, in EndOfCentralDirectory eocd, bool verbose)
 {
     // auto prepFile = File(prependFile);
     writeln("not able to prepend file yet!");

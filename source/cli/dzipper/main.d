@@ -17,7 +17,7 @@ int main(string[] args)
     {
         const opts = parseOpts(args);
         return opts.match!(
-            (Opts o) => run(o),
+            (in Opts o) => run(o),
             (int code) => code
         );
     }
@@ -36,22 +36,21 @@ int main(string[] args)
     }
 }
 
-private int run(Opts opts)
+private int run(in Opts opts)
 {
     const
     verbose = opts.verbose,
     zipFile = opts.zipFile,
     prependFile = opts.prependFile;
 
-    auto file = new MmFile(zipFile);
-    writefln("file length: %d", file.length);
-    auto bytes = cast(ubyte[])(file[0 .. $]);
-    if (bytes.length < 22)
+    auto mfile = new MmFile(zipFile);
+    writefln("file length: %d", mfile.length);
+    if (mfile.length < 22)
     {
         stderr.cwriteln("<yellow>Not a zip file (too short).</yellow>");
         return 1;
     }
-    auto eocd_index = findEocd(bytes);
+    auto eocd_index = mfile.findEocd();
     if (eocd_index.isNull)
     {
         stderr.cwriteln("<yellow>Unable to locate zip metadata (EOCD).</yellow>");
@@ -61,7 +60,7 @@ private int run(Opts opts)
     {
         writeln("Found EOCD at offset ", eocd_index, ".");
     }
-    auto eocd = parseEocd(bytes[eocd_index.get .. $]);
+    auto eocd = parseEocd(cast(ubyte[]) mfile[eocd_index.get .. $]);
 
     if (verbose)
     {
@@ -77,11 +76,11 @@ private int run(Opts opts)
 
     if (prependFile.length == 0)
     {
-        bytes.printArchiveMetadata(eocd, verbose);
+        mfile.printArchiveMetadata(eocd, verbose);
     }
     else
     {
-        bytes.prependFileToArchive(prependFile, zipFile, eocd, verbose);
+        mfile.prependFileToArchive(prependFile, zipFile, eocd, verbose);
     }
 
     return 0;
