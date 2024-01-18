@@ -9,6 +9,7 @@ import consolecolors;
 import dzipper.model;
 import dzipper.options;
 import dzipper.parser;
+import dzipper.process;
 
 int main(string[] args)
 {
@@ -39,7 +40,8 @@ private int run(Opts opts)
 {
     const
     verbose = opts.verbose,
-    zipFile = opts.zipFile;
+    zipFile = opts.zipFile,
+    prependFile = opts.prependFile;
 
     auto file = new MmFile(zipFile);
     writefln("file length: %d", file.length);
@@ -72,34 +74,15 @@ private int run(Opts opts)
     {
         cwriteln("<yellow>Warning: empty zip file.</yellow>");
     }
+
+    if (prependFile.length == 0)
+    {
+        bytes.printArchiveMetadata(eocd, verbose);
+    }
     else
     {
-        auto suffix = eocd.totalCentralDirectoriesCount == 1 ? " entry." : " entries.";
-        writeln("Archive contains ", eocd.totalCentralDirectoriesCount, suffix);
-        bytes.checkCentralDirectories(eocd, verbose);
+        bytes.prependFileToArchive(prependFile, zipFile, eocd, verbose);
     }
 
     return 0;
-}
-
-private void checkCentralDirectories(in ubyte[] bytes,
-    in EndOfCentralDirectory eocd, bool verbose)
-{
-    import std.range : iota;
-
-    uint offset = eocd.startOfCentralDirectory;
-    foreach (i; iota(0, eocd.diskCentralDirectoriesCount))
-    {
-        auto cd = parseCd(bytes[offset .. $]);
-        if (verbose)
-        {
-            writeln(cd);
-        }
-        offset += cd.length();
-        auto lfh = parseLocalFileHeader(bytes[cd.startOfLocalFileHeader .. $]);
-        if (verbose)
-        {
-            writeln(lfh);
-        }
-    }
 }

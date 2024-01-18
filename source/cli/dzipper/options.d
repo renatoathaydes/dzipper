@@ -15,16 +15,18 @@ struct Opts
 {
     string zipFile;
     bool verbose;
+    string prependFile;
 }
 
 alias OptsResult = SumType!(Opts, int);
 
-OptsResult parseOpts(string[] args)
+OptsResult parseOpts(in string[] args)
 {
     OptsResult result;
     Opts opts;
     auto help = getopt(args,
-        "verbose|V", &opts.verbose);
+        "verbose|V", &opts.verbose,
+        "prepend|p", &opts.prependFile);
     if (help.helpWanted)
     {
         cwriteln("<blue>####### dzipper #######</blue>");
@@ -33,8 +35,7 @@ OptsResult parseOpts(string[] args)
     }
     else if (args.length != 2)
     {
-        cwrite("<red>Error:</red> Please provide the required arguments: ");
-        writeln("<zip-file> <out-dir>.");
+        cwriteln("<red>Error:</red> Please specify a zip file to read.");
         result = 3;
     }
     else
