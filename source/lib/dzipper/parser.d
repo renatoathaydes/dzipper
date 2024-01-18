@@ -4,7 +4,7 @@ import std.typecons : Nullable;
 import std.algorithm.searching : find;
 import std.exception : enforce, basicExceptionCtors;
 import std.bitmanip : nativeToLittleEndian, littleEndianToNative, peek, Endian;
-import std.range : tail, take, slide;
+import std.range : retro, tail, take, slide;
 import std.conv : to;
 import std.string : assumeUTF;
 import std.datetime.systime : DosFileTimeToSysTime, SysTime;
@@ -209,10 +209,10 @@ LocalFileHeader parseLocalFileHeader(in ubyte[] bytes) @safe
 // the EOCD can only appear in the last 65536 + 22 bytes
 private enum maxEocdLen = 65_535 + 22;
 
-Nullable!size_t findEocd(S, size_t windowLen = 56)(ref S source)
+Nullable!size_t findEocdIn(S, size_t windowLen = 56)(ref S source)
 {
     auto bytes = cast(ubyte[])(source.length > maxEocdLen ? source[$ - maxEocdLen .. $] : source[]);
-    return findEocd!(windowLen)(bytes);
+    return findEocd!(windowLen)(bytes, true);
 }
 
 /** 
@@ -242,7 +242,7 @@ Nullable!size_t findEocd(size_t windowLen = 56)(
     // windows overlap by 4 bytes so we can find the 4-byte marker even
     // if it's split with one element on a chunk and the rest on another.
     auto step = windowLen - 4;
-    auto windows = endBytes.slide(windowLen, step);
+    auto windows = endBytes.slide(windowLen, step).retro;
     auto idx = bytes.length;
     auto i = 0;
     foreach (window; windows)

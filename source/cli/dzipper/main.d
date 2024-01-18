@@ -50,7 +50,7 @@ private int run(in Opts opts)
         stderr.cwriteln("<yellow>Not a zip file (too short).</yellow>");
         return 1;
     }
-    auto eocd_index = mfile.findEocd();
+    auto eocd_index = findEocdIn(mfile);
     if (eocd_index.isNull)
     {
         stderr.cwriteln("<yellow>Unable to locate zip metadata (EOCD).</yellow>");
