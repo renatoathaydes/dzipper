@@ -3,7 +3,7 @@ module dzipper.parser;
 import std.typecons : Nullable;
 import std.algorithm.searching : find;
 import std.exception : enforce, basicExceptionCtors;
-import std.bitmanip : nativeToLittleEndian, littleEndianToNative, peek, Endian;
+import std.bitmanip : littleEndianToNative, peek, Endian;
 import std.range : retro, tail, take, slide;
 import std.conv : to;
 import std.string : assumeUTF;
@@ -11,15 +11,6 @@ import std.datetime.systime : DosFileTimeToSysTime, SysTime;
 
 import dzipper.model;
 import std.string;
-
-/** The End of Central Directory Signature. */
-immutable(ubyte[]) EOCD_SIGNATURE = nativeToLittleEndian!uint(0x06054b50)[0 .. $];
-
-/** The Central Directory Signature. */
-immutable(ubyte[]) CD_SIGNATURE = nativeToLittleEndian!uint(0x02014b50)[0 .. $];
-
-/** The Local File header Signature. */
-immutable(ubyte[]) LOCAL_FILE_SIGNATURE = nativeToLittleEndian!uint(0x04034b50)[0 .. $];
 
 /// Reason why a Zip Archive's metadata couldn't be parsed.
 enum ZipParseError
@@ -209,6 +200,13 @@ LocalFileHeader parseLocalFileHeader(in ubyte[] bytes) @safe
 // the EOCD can only appear in the last 65536 + 22 bytes
 private enum maxEocdLen = 65_535 + 22;
 
+/**
+ * Find the End of Central Directory (EOCD).
+ *
+ * Params:
+ *   source = a source of bytes (must support slice operator, e.g. MmFile).
+ * Returns: index of the End of Central Directory if it can be found, null otherwise.
+ */
 Nullable!size_t findEocdIn(S, size_t windowLen = 56)(ref S source)
 {
     auto bytes = cast(ubyte[])(source.length > maxEocdLen ? source[$ - maxEocdLen .. $] : source[]);

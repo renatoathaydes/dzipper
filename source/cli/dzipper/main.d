@@ -42,45 +42,55 @@ private int run(in Opts opts)
     verbose = opts.verbose,
     zipFile = opts.zipFile,
     prependFile = opts.prependFile;
+    File tempFile;
 
-    auto mfile = new MmFile(zipFile);
-    writefln("file length: %d", mfile.length);
-    if (mfile.length < 22)
+    // start memory-mapped zip file scope
     {
-        stderr.cwriteln("<yellow>Not a zip file (too short).</yellow>");
-        return 1;
-    }
-    auto eocd_index = findEocdIn(mfile);
-    if (eocd_index.isNull)
-    {
-        stderr.cwriteln("<yellow>Unable to locate zip metadata (EOCD).</yellow>");
-        return 2;
-    }
-    if (verbose)
-    {
-        writeln("Found EOCD at offset ", eocd_index, ".");
-    }
-    auto eocd = parseEocd(cast(ubyte[]) mfile[eocd_index.get .. $]);
+        auto mfile = new MmFile(zipFile);
+        writefln("file length: %d", mfile.length);
+        if (mfile.length < 22)
+        {
+            stderr.cwriteln("<yellow>Not a zip file (too short).</yellow>");
+            return 1;
+        }
+        auto eocd_index = findEocdIn(mfile);
+        if (eocd_index.isNull)
+        {
+            stderr.cwriteln("<yellow>Unable to locate zip metadata (EOCD).</yellow>");
+            return 2;
+        }
+        if (verbose)
+        {
+            writeln("Found EOCD at offset ", eocd_index, ".");
+        }
+        auto eocd = parseEocd(cast(ubyte[]) mfile[eocd_index.get .. $]);
 
-    if (verbose)
-    {
-        writeln(eocd);
+        if (verbose)
+        {
+            writeln(eocd);
+        }
+
+        cwriteln("<green>File appears to be a zip file.</green>");
+
+        if (eocd.totalCentralDirectoriesCount == 0)
+        {
+            cwriteln("<yellow>Warning: empty zip file.</yellow>");
+        }
+
+        if (prependFile.length == 0)
+        {
+            mfile.printArchiveMetadata(eocd, verbose);
+        }
+        else
+        {
+            tempFile = mfile.prependFileToArchive(prependFile, eocd, verbose);
+        }
     }
 
-    cwriteln("<green>File appears to be a zip file.</green>");
-
-    if (eocd.totalCentralDirectoriesCount == 0)
+    // the memory file has been closed now, so we can move the tempFile into the zip archive.
+    if (tempFile.isOpen)
     {
-        cwriteln("<yellow>Warning: empty zip file.</yellow>");
-    }
-
-    if (prependFile.length == 0)
-    {
-        mfile.printArchiveMetadata(eocd, verbose);
-    }
-    else
-    {
-        mfile.prependFileToArchive(prependFile, zipFile, eocd, verbose);
+        tempFile.name = zipFile;
     }
 
     return 0;

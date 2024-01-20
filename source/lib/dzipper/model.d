@@ -5,7 +5,21 @@ import std.format : FormatSpec;
 import std.array : appender;
 import std.conv : to;
 import std.range : put;
+import std.bitmanip : nativeToLittleEndian;
 import std.datetime.systime : SysTime;
+
+const(uint) EOCD_SIGNATURE_UINT = 0x06054b50;
+const(uint) CD_SIGNATURE_UINT = 0x02014b50;
+const(uint) LOCAL_FILE_SIGNATURE_UINT = 0x04034b50;
+
+/** The End of Central Directory Signature. */
+immutable(ubyte[]) EOCD_SIGNATURE = nativeToLittleEndian(EOCD_SIGNATURE_UINT)[0 .. $];
+
+/** The Central Directory Signature. */
+immutable(ubyte[]) CD_SIGNATURE = nativeToLittleEndian(CD_SIGNATURE_UINT)[0 .. $];
+
+/** The Local File header Signature. */
+immutable(ubyte[]) LOCAL_FILE_SIGNATURE = nativeToLittleEndian(LOCAL_FILE_SIGNATURE_UINT)[0 .. $];
 
 private mixin template StructToString(S)
 {
@@ -71,6 +85,10 @@ struct EndOfCentralDirectory
     ushort commentLength;
     ubyte[] comment;
     mixin StructToString!EndOfCentralDirectory;
+
+    size_t length() const {
+        return 22 + comment.length;
+    }
 }
 
 private mixin template FileInformation()
@@ -103,7 +121,7 @@ struct CentralDirectory
 
     /// The length of the CD in bytes (notice that the struct
     /// does not include the CD signature).
-    size_t length()
+    size_t length() const
     {
         return 46 + fileName.length + extraField.length + comment.length;
     }
@@ -117,7 +135,7 @@ struct LocalFileHeader
 
     /// The length of the header in bytes (notice that the struct
     /// does not include the local file header signature).
-    size_t length()
+    size_t length() const
     {
         return 30 + fileName.length + extraField.length;
     }
