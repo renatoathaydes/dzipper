@@ -50,10 +50,14 @@ private void checkCentralDirectories(B)(ref B bytes,
 ///   eocd = end of central directory structure
 ///   verbose = whether to log verbose output
 /// Returns: the temp file the output is written to.
-File prependFileToArchive(B)(ref B bytes, string prependFile, in EndOfCentralDirectory eocd, bool verbose)
+File prependFileToArchive(B)(ref B bytes, string prependFile, EndOfCentralDirectory eocd, bool verbose)
 {
     auto outfile = File.tmpfile;
-    File(prependFile).copyFile(outfile);
+    {
+        auto pf = File(prependFile);
+        pf.copyFile(outfile);
+    }
+
     long archiveStart = cast(long) outfile.tell();
 
     uint offset = eocd.startOfCentralDirectory;
@@ -95,9 +99,8 @@ File prependFileToArchive(B)(ref B bytes, string prependFile, in EndOfCentralDir
     }
 
     // write the end-of-central-directory
-    auto shiftEocd = eocd;
-    shiftEocd.startOfCentralDirectory = to!uint(eocd.startOfCentralDirectory + shift);
-    outfile.rawWrite(shiftEocd.toBytes);
+    eocd.startOfCentralDirectory = to!uint(eocd.startOfCentralDirectory + shift);
+    outfile.rawWrite(eocd.toBytes);
 
     return outfile;
 }
@@ -117,10 +120,11 @@ private void appends(T, R)(R range, immutable T value)
 /// Returns: byte array in little endian
 ubyte[] toBytes(in CentralDirectory cd)
 {
-    import std.datetime : SysTimeToDosFileTime;
+    import std.datetime.systime : SysTimeToDosFileTime;
 
     auto bytes = new ubyte[cd.length];
     auto ap = appender(&bytes);
+    ap.shrinkTo(0);
     ap.appends(CD_SIGNATURE_UINT);
     ap.appends(cd.versionMadeBy);
     ap.appends(cd.versionRequired);
@@ -159,6 +163,7 @@ ubyte[] toBytes(in EndOfCentralDirectory eocd)
 {
     auto bytes = new ubyte[eocd.length];
     auto ap = appender(&bytes);
+    ap.shrinkTo(0);
     ap.appends(EOCD_SIGNATURE_UINT);
     ap.appends(eocd.diskNumber);
     ap.appends(eocd.centralDirectoryDiskNumber);
@@ -171,7 +176,7 @@ ubyte[] toBytes(in EndOfCentralDirectory eocd)
     return bytes;
 }
 
-private void copyFile(scope ref File from, scope ref File to)
+private void copyFile(ref File from, ref File to)
 {
     ubyte[4096] buf;
     ubyte[] data;
@@ -187,8 +192,10 @@ version (unittest)
 {
     import tested;
     import dshould;
+    import std.conv : hexString;
+    import std.datetime.systime : DosFileTimeToSysTime, SysTime;
 
-    @name("can copy file contents")
+    @name("can copy file contents then add bytes to destination")
     unittest
     {
         scope (exit)
@@ -199,8 +206,8 @@ version (unittest)
         // write some file
         {
             auto temp = File("temp__", "wb");
-
-            temp.rawWrite([1, 2, 3]);
+            ubyte[3] b = [1, 2, 3];
+            temp.rawWrite(b);
         }
 
         // copy to other file then add more stuff to it
@@ -208,12 +215,66 @@ version (unittest)
             auto from = File("temp__", "rb");
             auto to = File("temp__2", "wb");
             from.copyFile(to);
-            to.rawWrite([4, 5]);
+            ubyte[2] b = [4, 5];
+            to.rawWrite(b);
         }
 
         auto res = File("temp__2");
         ubyte[6] buf;
         auto bytes = res.rawRead(buf);
-        bytes.should.equal([1, 2, 3, 4, 5]);
+        ubyte[5] b = [1, 2, 3, 4, 5];
+        bytes.should.equal(b);
+    }
+
+    @name("EOCD can be serialized")
+    unittest
+    {
+        ubyte[] eocdData = cast(ubyte[]) hexString!"504b0506 0100 0200 0300 0400 05000000 06000000 0000";
+        EndOfCentralDirectory eocd = {
+            diskNumber: 1,
+            centralDirectoryDiskNumber: 2,
+            diskCentralDirectoriesCount: 3,
+            totalCentralDirectoriesCount: 4,
+            centralDirectorySize: 5,
+            startOfCentralDirectory: 6,
+            commentLength: 0,
+            comment: [],
+        };
+        eocd.toBytes().should.equal(eocdData);
+    }
+
+    private SysTime toSysTime(ushort date, ushort time) @safe
+    {
+        uint datetime = (date << 16) + time;
+        return DosFileTimeToSysTime(datetime);
+    }
+
+    @name("CD can be serialized")
+    unittest
+    {
+        ubyte[] cdData = cast(ubyte[]) hexString!"504b0102 0100 0200 0300 0400 2EA6
+            2458 07000000 08000000 09000000 0200 0300 0000 0A00 0B00 0C000000 0D000000 4142 1A2B3C";
+        auto dateTime = toSysTime(22_564, 42_542);
+        CentralDirectory cd = {
+            versionMadeBy: 1,
+            versionRequired: 2,
+            generalPurposeBitFlag: 3,
+            compressionMethod: cast(CompressionMethod) 4,
+            lastModificationDateTime: dateTime,
+            crc32: 7,
+            compressedSize: 8,
+            uncompressedSize: 9,
+            fileNameLength: 2,
+            extraFieldLength: 3,
+            commentLength: 0,
+            diskNumber: 10,
+            internalFileAttributes: 11,
+            externalFileAttributes: 12,
+            startOfLocalFileHeader: 13,
+            fileName: "AB".dup,
+            extraField: [0x1A, 0x2B, 0x3C],
+            comment: [],
+        };
+        cd.toBytes().should.equal(cdData);
     }
 }
