@@ -2,12 +2,14 @@ module dzipper.process;
 
 import std.stdio : File, writeln;
 import std.range : iota;
-import std.file : remove;
+import std.file : remove, tempDir;
 import std.bitmanip : append, Endian;
-import std.array : appender;
+import std.array : appender, array;
 import std.typecons : Nullable;
 import std.conv : to;
 import std.algorithm.comparison : min;
+import std.path : chainPath;
+import std.random : uniform;
 
 import dzipper.model, dzipper.parser;
 
@@ -52,7 +54,11 @@ private void checkCentralDirectories(B)(ref B bytes,
 /// Returns: the temp file the output is written to.
 File prependFileToArchive(B)(ref B bytes, string prependFile, EndOfCentralDirectory eocd, bool verbose)
 {
-    auto outfile = File.tmpfile;
+    auto outfile = File(tempDir.chainPath("dzipper-" ~ uniform(0, uint.max).to!string).array, "wb");
+    if (verbose) {
+        writeln("Writing output to temp file: ", outfile.name);
+    }
+
     {
         auto pf = File(prependFile);
         pf.copyFile(outfile);

@@ -23,6 +23,19 @@ enum ZipParseError
     InvalidLocalFileHeader,
 }
 
+string toString(ZipParseError err)
+{
+    final switch (err)
+    {
+    case ZipParseError.InvalidEocd:
+        return "Invalid End-of-Central-Directory";
+    case ZipParseError.InvalidCd:
+        return "Invalid Central-Directory";
+    case ZipParseError.InvalidLocalFileHeader:
+        return "Invalid Local-File-Header";
+    }
+}
+
 class ZipParseException : Exception
 {
     ZipParseError error;

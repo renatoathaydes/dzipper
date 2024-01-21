@@ -21,6 +21,12 @@ int main(string[] args)
             (int code) => code
         );
     }
+    catch (ZipParseException e)
+    {
+        stderr.cwriteln("<red>Error:</red> Problem parsing zip archive: ",
+            e.error.toString, " - ", e.msg);
+        return 7;
+    }
     catch (Exception e)
     {
         version (assert)
@@ -90,7 +96,13 @@ private int run(in Opts opts)
     // the memory file has been closed now, so we can move the tempFile into the zip archive.
     if (tempFile.isOpen)
     {
-        tempFile.name = zipFile;
+        import std.file : remove, rename, FileException;
+        import std.exception : collectException;
+
+        scope (exit)
+            tempFile.name.remove.collectException!FileException;
+
+        tempFile.name.rename(zipFile);
     }
 
     return 0;
