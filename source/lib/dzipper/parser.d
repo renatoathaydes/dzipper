@@ -4,7 +4,8 @@ import std.typecons : Nullable;
 import std.algorithm.searching : find;
 import std.exception : enforce, basicExceptionCtors;
 import std.bitmanip : littleEndianToNative, peek, Endian;
-import std.range : retro, tail, take, slide;
+import std.range : empty, retro, tail, take, slide;
+import std.range.primitives;
 import std.conv : to;
 import std.string : assumeUTF;
 import std.datetime.systime : DosFileTimeToSysTime, SysTime;
@@ -210,21 +211,8 @@ LocalFileHeader parseLocalFileHeader(in ubyte[] bytes) @safe
     return result;
 }
 
-// the EOCD can only appear in the last 65536 + 22 bytes
+// The EOCD can only appear in the last 65536 + 22 bytes.
 private enum maxEocdLen = 65_535 + 22;
-
-/**
- * Find the End of Central Directory (EOCD).
- *
- * Params:
- *   source = a source of bytes (must support slice operator, e.g. MmFile).
- * Returns: index of the End of Central Directory if it can be found, null otherwise.
- */
-Nullable!size_t findEocdIn(S, size_t windowLen = 56)(ref S source)
-{
-    auto bytes = cast(ubyte[])(source.length > maxEocdLen ? source[$ - maxEocdLen .. $] : source[]);
-    return findEocd!(windowLen)(bytes, true);
-}
 
 /** 
  * Find the End of Central Directory (EOCD).
@@ -239,9 +227,10 @@ Nullable!size_t findEocdIn(S, size_t windowLen = 56)(ref S source)
  * Standards: PKWARE Zip File Format Specification Version 6.3.10
  * See_Also: https://pkware.cachefly.net/webdocs/APPNOTE/APPNOTE-6.3.10.TXT
  */
-Nullable!size_t findEocd(size_t windowLen = 56)(
+Nullable!size_t findEocd(size_t windowLen = 32)(
     in ubyte[] bytes, bool checkCdSignature = true
-) pure @nogc @safe if (windowLen > 7)
+) //pure @nogc @safe
+if (windowLen > 7)
 {
     Nullable!size_t result;
 
@@ -252,29 +241,37 @@ Nullable!size_t findEocd(size_t windowLen = 56)(
 
     // windows overlap by 4 bytes so we can find the 4-byte marker even
     // if it's split with one element on a chunk and the rest on another.
-    auto step = windowLen - 4;
-    auto windows = endBytes.slide(windowLen, step).retro;
+    enum overlap = 4;
+    auto step = windowLen - overlap;
+    auto windows = endBytes.slide(windowLen, step);
     auto idx = bytes.length;
-    auto i = 0;
-    foreach (window; windows)
+
+    foreach (window; windows.retro)
     {
+        // the last window may be shorter than windowLen
+        if (window.length < overlap)
+            continue;
         auto foundRange = window.find(EOCD_SIGNATURE);
-        if (foundRange.length > 0)
+        if (!foundRange.empty)
         {
             idx -= foundRange.length;
-            if (!checkCdSignature || bytes.checkCdSignature(idx + 16))
+            assert(bytes[idx .. idx + 4] == EOCD_SIGNATURE, "eocd signature not found at idx");
+            // to be sure that the signature is not a coincidence, check if the
+            // uint representing startOfCentralDirectory actually points to a
+            // CD signature.
+            if (!checkCdSignature ||
+                (idx + 16 < bytes.length && bytes.checkCdSignature(idx + 16)))
             {
                 result = idx;
                 return result;
             }
         }
-        idx -= step;
-        i++;
+        idx -= window.length - overlap;
     }
     return result;
 }
 
-private bool checkCdSignature(in ubyte[] bytes, size_t idx) pure @nogc @safe
+private bool checkCdSignature(in ubyte[] bytes, size_t idx) //pure @nogc @safe
 {
     if (idx + 4 >= bytes.length)
         return false;
@@ -288,6 +285,10 @@ private bool checkCdSignature(in ubyte[] bytes, size_t idx) pure @nogc @safe
 
 private SysTime toSysTime(ushort date, ushort time) @safe
 {
+    import std.stdio;
+
+    if (date == 0 && time == 0)
+        return DosFileTimeToSysTime(0b0000_0000_0010_0001_0000_0000_0000_0000);
     uint datetime = (date << 16) + time;
     return DosFileTimeToSysTime(datetime);
 }

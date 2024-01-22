@@ -6,10 +6,7 @@ import std.sumtype : match;
 
 import consolecolors;
 
-import dzipper.model;
-import dzipper.options;
-import dzipper.parser;
-import dzipper.process;
+import dzipper.model, dzipper.options, dzipper.parser, dzipper.process;
 
 int main(string[] args)
 {
@@ -59,7 +56,7 @@ private int run(in Opts opts)
             stderr.cwriteln("<yellow>Not a zip file (too short).</yellow>");
             return 1;
         }
-        auto eocd_index = findEocdIn(mfile);
+        auto eocd_index = findEocd(cast(const(ubyte[])) mfile[]);
         if (eocd_index.isNull)
         {
             stderr.cwriteln("<yellow>Unable to locate zip metadata (EOCD).</yellow>");

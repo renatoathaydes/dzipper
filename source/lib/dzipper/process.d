@@ -52,7 +52,7 @@ private void checkCentralDirectories(B)(ref B bytes,
 ///   eocd = end of central directory structure
 ///   verbose = whether to log verbose output
 /// Returns: the temp file the output is written to.
-File prependFileToArchive(B)(ref B bytes, string prependFile, EndOfCentralDirectory eocd, bool verbose)
+File prependFileToArchive(B)(ref B bytes, string prependFile, EndOfCentralDirectory eocd, bool verbose = false)
 {
     auto outfile = File(tempDir.chainPath("dzipper-" ~ uniform(0, uint.max).to!string).array, "wb");
     if (verbose) {
