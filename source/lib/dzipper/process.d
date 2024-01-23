@@ -64,32 +64,32 @@ string prependFileToArchive(B)(ref B bytes, string prependFile, EndOfCentralDire
         pf.copyFile(outfile);
     }
 
-    long archiveStart = cast(long) outfile.tell();
+    auto archiveStart = cast(size_t) outfile.tell();
 
     uint offset = eocd.startOfCentralDirectory;
-    Nullable!long zipStart;
+    Nullable!size_t zipStart;
 
     // first, write all local file headers and the file contents
     foreach (i; iota(0, eocd.diskCentralDirectoriesCount))
     {
         auto cd = parseCd(cast(ubyte[]) bytes[offset .. $]);
         auto lfh = parseLocalFileHeader(cast(ubyte[]) bytes[cd.startOfLocalFileHeader .. $]);
-        zipStart = cast(long)(zipStart.isNull
+        zipStart = zipStart.isNull
                 ? cd.startOfLocalFileHeader
-                : min(cd.startOfLocalFileHeader, zipStart.get));
+                : min(cd.startOfLocalFileHeader, zipStart.get);
 
         if (verbose)
             writeln("Adding entry: ", lfh.fileName);
         auto lfhEnd = cd.startOfLocalFileHeader + lfh.length;
         outfile.rawWrite(bytes[cd.startOfLocalFileHeader .. lfhEnd]);
-        outfile.rawWrite(bytes[lfhEnd .. lfhEnd + lfh.uncompressedSize]);
+        outfile.rawWrite(bytes[lfhEnd .. (lfhEnd + lfh.compressedSize)]);
         offset += cd.length;
     }
 
     if (zipStart.isNull)
         return outfile.name.dup;
 
-    const long shift = archiveStart - zipStart.get;
+    const size_t shift = archiveStart - zipStart.get;
     offset = eocd.startOfCentralDirectory;
 
     if (verbose)
@@ -99,13 +99,13 @@ string prependFileToArchive(B)(ref B bytes, string prependFile, EndOfCentralDire
     foreach (i; iota(0, eocd.diskCentralDirectoriesCount))
     {
         auto cd = parseCd(cast(ubyte[]) bytes[offset .. $]);
-        cd.startOfLocalFileHeader = to!uint(cd.startOfLocalFileHeader + shift);
+        cd.startOfLocalFileHeader += shift;
         outfile.rawWrite(cd.toBytes);
         offset += cd.length;
     }
 
     // write the end-of-central-directory
-    eocd.startOfCentralDirectory = to!uint(eocd.startOfCentralDirectory + shift);
+    eocd.startOfCentralDirectory += shift;
     outfile.rawWrite(eocd.toBytes);
 
     return outfile.name.dup;
