@@ -52,7 +52,7 @@ private void checkCentralDirectories(B)(ref B bytes,
 ///   eocd = end of central directory structure
 ///   verbose = whether to log verbose output
 /// Returns: the temp file the output is written to.
-File prependFileToArchive(B)(ref B bytes, string prependFile, EndOfCentralDirectory eocd, bool verbose = false)
+string prependFileToArchive(B)(ref B bytes, string prependFile, EndOfCentralDirectory eocd, bool verbose = false)
 {
     auto outfile = File(tempDir.chainPath("dzipper-" ~ uniform(0, uint.max).to!string).array, "wb");
     if (verbose) {
@@ -87,7 +87,7 @@ File prependFileToArchive(B)(ref B bytes, string prependFile, EndOfCentralDirect
     }
 
     if (zipStart.isNull)
-        return outfile;
+        return outfile.name.dup;
 
     const long shift = archiveStart - zipStart.get;
     offset = eocd.startOfCentralDirectory;
@@ -108,7 +108,7 @@ File prependFileToArchive(B)(ref B bytes, string prependFile, EndOfCentralDirect
     eocd.startOfCentralDirectory = to!uint(eocd.startOfCentralDirectory + shift);
     outfile.rawWrite(eocd.toBytes);
 
-    return outfile;
+    return outfile.name.dup;
 }
 
 private void appends(T, R)(R range, immutable T value)

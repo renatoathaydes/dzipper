@@ -50,7 +50,7 @@ unittest
 @name("empty file is not a zip file")
 unittest
 {
-    findEocd(cast(ubyte[]) []).isNull.should.equal(true);
+    findEocd(cast(ubyte[])[]).isNull.should.equal(true);
 }
 
 @name("random bytes are not a zip file")
@@ -82,20 +82,40 @@ unittest
     auto eocd_index = findEocd(bytes);
     eocd_index.should.equal(90);
     auto eocd = parseEocd(bytes[eocd_index.get .. $]);
+    auto cd = parseCd(bytes[eocd.startOfCentralDirectory .. $]);
+    auto fh = parseLocalFileHeader(bytes[cd.startOfLocalFileHeader .. $]);
 
     auto toPrepend = "__toPrepend";
     enum prepended = "PREFIX";
     scope (exit)
-        toPrepend.remove;
+        toPrepend.remove.collectException!FileException;
     toPrepend.write(prepended);
 
     auto res = prependFileToArchive(bytes, toPrepend, eocd);
     scope (exit)
-        res.name.remove.collectException!FileException;
+        res.remove.collectException!FileException;
 
-    res.size.should.equal(bytes.length + prepended.length);
-    auto buf = new ubyte[res.size];
-    auto resultContents = res.rawRead(buf);
+    auto resFile = File(res, "rb");
+    resFile.size.should.equal(bytes.length + prepended.length);
+    auto buf = new ubyte[resFile.size];
+    auto resultContents = resFile.rawRead(buf);
 
     resultContents[0 .. prepended.length].should.equal(prepended);
+
+    // parse the resulting bytes and ensure it's been shifted properly
+    auto eocd_index2 = findEocd(resultContents);
+    auto eocd2 = parseEocd(resultContents[eocd_index2.get .. $]);
+    auto cd2 = parseCd(resultContents[eocd2.startOfCentralDirectory .. $]);
+    auto fh2 = parseLocalFileHeader(resultContents[cd2.startOfLocalFileHeader .. $]);
+
+    eocd_index2.should.equal(eocd_index.get + prepended.length);
+    eocd2.startOfCentralDirectory.should.equal(eocd.startOfCentralDirectory + prepended.length);
+    cd2.startOfLocalFileHeader.should.equal(cd.startOfLocalFileHeader + prepended.length);
+    fh2.should.equal(fh);
+
+    // the actual file contents should also be identical
+    auto originalEntry = bytes[(cd.startOfLocalFileHeader + fh.length) .. $];
+    auto newEntry = resultContents[(cd2.startOfLocalFileHeader + fh2.length) .. $];
+    originalEntry[0 .. fh.compressedSize].should.equal(newEntry[0 .. fh2.compressedSize]);
+    newEntry[0 .. fh.compressedSize].should.equal("Hi");
 }

@@ -3,6 +3,7 @@ module dzipper.main;
 import std.stdio;
 import std.mmfile;
 import std.sumtype : match;
+import std.range : empty;
 
 import consolecolors;
 
@@ -45,7 +46,7 @@ private int run(in Opts opts)
     verbose = opts.verbose,
     zipFile = opts.zipFile,
     prependFile = opts.prependFile;
-    File tempFile;
+    string tempFile = "";
 
     // start memory-mapped zip file scope
     {
@@ -91,15 +92,15 @@ private int run(in Opts opts)
     }
 
     // the memory file has been closed now, so we can move the tempFile into the zip archive.
-    if (tempFile.isOpen)
+    if (!tempFile.empty)
     {
         import std.file : remove, rename, FileException;
         import std.exception : collectException;
 
         scope (exit)
-            tempFile.name.remove.collectException!FileException;
+            tempFile.remove.collectException!FileException;
 
-        tempFile.name.rename(zipFile);
+        tempFile.rename(zipFile);
     }
 
     return 0;
