@@ -45,13 +45,14 @@ private int run(in Opts opts)
     const
     verbose = opts.verbose,
     zipFile = opts.zipFile,
+    outputFile = opts.outputFile,
     prependFile = opts.prependFile;
     string tempFile = "";
 
     // start memory-mapped zip file scope
     {
         auto mfile = new MmFile(zipFile);
-        writefln("file length: %d", mfile.length);
+
         if (mfile.length < 22)
         {
             stderr.cwriteln("<yellow>Not a zip file (too short).</yellow>");
@@ -68,22 +69,21 @@ private int run(in Opts opts)
             writeln("Found EOCD at offset ", eocd_index, ".");
         }
         auto eocd = parseEocd(cast(ubyte[]) mfile[eocd_index.get .. $]);
+        auto meta = mfile.getArchiveMetadata(eocd);
 
-        if (verbose)
+        printSummary(eocd, meta, mfile.length, verbose);
+
+        if (prependFile.empty)
         {
-            writeln(eocd);
-        }
+            if (outputFile.empty)
+            {
 
-        cwriteln("<green>File appears to be a zip file.</green>");
-
-        if (eocd.totalCentralDirectoriesCount == 0)
-        {
-            cwriteln("<yellow>Warning: empty zip file.</yellow>");
-        }
-
-        if (prependFile.length == 0)
-        {
-            mfile.printArchiveMetadata(eocd, verbose);
+            }
+            else
+            {
+                // TODO 
+                //mfile.writeArchive(eocd, verbose, outputFile);
+            }
         }
         else
         {
@@ -100,8 +100,56 @@ private int run(in Opts opts)
         scope (exit)
             tempFile.remove.collectException!FileException;
 
-        tempFile.rename(zipFile);
+        tempFile.rename(outputFile.empty ? zipFile : outputFile);
     }
 
     return 0;
+}
+
+private void printSummary(in EndOfCentralDirectory eocd,
+    in ZipArchiveMetadata meta,
+    size_t fileLength,
+    bool verbose)
+{
+    cwriteln("<green>File is a valid zip archive.</green>");
+    cwritefln("File length: <blue>%,3d</blue>", fileLength);
+
+    if (eocd.totalCentralDirectoriesCount == 0)
+    {
+        cwriteln("<yellow>Warning: empty zip file.</yellow>");
+    }
+    else
+    {
+        cwritefln("Number of entries: <blue>%d</blue>", eocd.totalCentralDirectoriesCount);
+    }
+    if (verbose)
+    {
+        cwriteln("<green>=== End of Central Directory:</green>");
+        writeln(eocd);
+
+        cwriteln("<green>=== Central Directory Entries:</green>");
+        foreach (entry; meta.centralDirectories)
+        {
+            writeln(entry);
+        }
+        writeln("<green>=== Local file headers:</green>");
+        foreach (lfh; meta.localFileHeaders)
+        {
+            writeln(lfh);
+        }
+    }
+
+    if (!meta.zipStart.isNull)
+        cwritefln("Start index: <blue>%d</blue>", meta.zipStart.get);
+
+    cwritefln("Entries total compressed size: <blue>%,3.0f</blue>", meta.totalCompressed);
+    cwritefln("Entries total uncompressed size: <blue>%,3.0f</blue>", meta.totalUncompressed);
+    cwritefln("Compression rate: <blue>%.2f</blue>%%", (
+            meta.totalCompressed / meta.totalUncompressed) * 100.0);
+    writeln("Compression method count per entry:");
+
+    foreach (cm, count; meta.compressionMethodCount)
+    {
+        cwritefln("  - %s: <blue>%d</blue>", cm, count);
+    }
 }

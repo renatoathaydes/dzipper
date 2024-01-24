@@ -13,31 +13,55 @@ import std.random : uniform;
 
 import dzipper.model, dzipper.parser;
 
-void printArchiveMetadata(B)(ref B bytes, in EndOfCentralDirectory eocd, bool verbose)
+/// Metadata for a zip archive.
+struct ZipArchiveMetadata
 {
-    auto suffix = eocd.totalCentralDirectoriesCount == 1 ? " entry." : " entries.";
-    writeln("Archive contains ", eocd.totalCentralDirectoriesCount, suffix);
-    bytes.checkCentralDirectories(eocd, verbose);
+    Nullable!size_t zipStart;
+    double totalCompressed;
+    double totalUncompressed;
+    uint[CompressionMethod] compressionMethodCount;
+    CentralDirectory[] centralDirectories;
+    LocalFileHeader[] localFileHeaders;
 }
 
-private void checkCentralDirectories(B)(ref B bytes,
-    in EndOfCentralDirectory eocd, bool verbose)
+/// Parse and collect all the Zip archive metadata.
+///
+/// Params:
+///   bytes = zip archive source of bytes
+///   eocd = end of central directory structure
+/// Returns: the metadata for the zip archive.
+ZipArchiveMetadata getArchiveMetadata(B)(ref B bytes, in EndOfCentralDirectory eocd)
 {
+    Nullable!size_t zipStart;
     uint offset = eocd.startOfCentralDirectory;
+    double totalCompressed = 0;
+    double totalUncompressed = 0;
+    uint[CompressionMethod] compressionCount;
+    auto fileHeaders = new LocalFileHeader[eocd.diskCentralDirectoriesCount];
+    auto centralDirs = new CentralDirectory[eocd.diskCentralDirectoriesCount];
     foreach (i; iota(0, eocd.diskCentralDirectoriesCount))
     {
         auto cd = parseCd(cast(ubyte[]) bytes[offset .. $]);
-        if (verbose)
-        {
-            writeln(cd);
-        }
+        centralDirs ~= cd;
+        zipStart = zipStart.isNull
+            ? cd.startOfLocalFileHeader
+            : min(cd.startOfLocalFileHeader, zipStart.get);
+        totalCompressed += cd.compressedSize;
+        totalUncompressed += cd.uncompressedSize;
         offset += cd.length;
+        compressionCount.require(cd.compressionMethod)++;
         auto lfh = parseLocalFileHeader(cast(ubyte[]) bytes[cd.startOfLocalFileHeader .. $]);
-        if (verbose)
-        {
-            writeln(lfh);
-        }
+        fileHeaders ~= lfh;
     }
+    ZipArchiveMetadata result = {
+        zipStart: zipStart,
+        totalCompressed: totalCompressed,
+        totalUncompressed: totalUncompressed,
+        compressionMethodCount: compressionCount,
+        centralDirectories: centralDirs,
+        localFileHeaders: fileHeaders,
+    };
+    return result;
 }
 
 /// Prepend the contents of a file into the zip archive.
@@ -55,7 +79,8 @@ private void checkCentralDirectories(B)(ref B bytes,
 string prependFileToArchive(B)(ref B bytes, string prependFile, EndOfCentralDirectory eocd, bool verbose = false)
 {
     auto outfile = File(tempDir.chainPath("dzipper-" ~ uniform(0, uint.max).to!string).array, "wb");
-    if (verbose) {
+    if (verbose)
+    {
         writeln("Writing output to temp file: ", outfile.name);
     }
 
@@ -75,8 +100,8 @@ string prependFileToArchive(B)(ref B bytes, string prependFile, EndOfCentralDire
         auto cd = parseCd(cast(ubyte[]) bytes[offset .. $]);
         auto lfh = parseLocalFileHeader(cast(ubyte[]) bytes[cd.startOfLocalFileHeader .. $]);
         zipStart = zipStart.isNull
-                ? cd.startOfLocalFileHeader
-                : min(cd.startOfLocalFileHeader, zipStart.get);
+            ? cd.startOfLocalFileHeader
+            : min(cd.startOfLocalFileHeader, zipStart.get);
 
         if (verbose)
             writeln("Adding entry: ", lfh.fileName);

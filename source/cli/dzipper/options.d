@@ -9,13 +9,23 @@ const USAGE = "
 DZipper is a utiliy for displaying zip file metadata.
 
 Usage:
-  dzipper [<options>] <zip-file>";
+dzipper [<options>] <zip-archive>
+  -o <file>
+  --output     Output file.
+  -p <file>
+  --prepend    Prepend a file to a zip archive.
+  -V
+  --verbose    Show verbose output. 
+  -h
+  --help       This help information.
+";
 
 struct Opts
 {
     string zipFile;
     bool verbose;
     string prependFile;
+    string outputFile;
 }
 
 alias OptsResult = SumType!(Opts, int);
@@ -26,7 +36,8 @@ OptsResult parseOpts(string[] args)
     Opts opts;
     auto help = getopt(args,
         "verbose|V", &opts.verbose,
-        "prepend|p", &opts.prependFile);
+        "prepend|p", &opts.prependFile,
+        "output|o", &opts.outputFile);
     if (help.helpWanted)
     {
         cwriteln("<blue>####### dzipper #######</blue>");
