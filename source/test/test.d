@@ -82,8 +82,9 @@ unittest
     auto eocd_index = findEocd(bytes);
     eocd_index.should.equal(90);
     auto eocd = parseEocd(bytes[eocd_index.get .. $]);
-    auto cd = parseCd(bytes[eocd.startOfCentralDirectory .. $]);
-    auto fh = parseLocalFileHeader(bytes[cd.startOfLocalFileHeader .. $]);
+    auto meta = bytes.getArchiveMetadata(eocd);
+    meta.centralDirectories.length.should.equal(1);
+    meta.localFileHeaders.length.should.equal(1);
 
     auto toPrepend = "__toPrepend";
     enum prepended = "PREFIX";
@@ -91,9 +92,12 @@ unittest
         toPrepend.remove.collectException!FileException;
     toPrepend.write(prepended);
 
-    auto res = prependFileToArchive(bytes, toPrepend, eocd);
+    auto res = bytes.prependFileToArchive(toPrepend, meta);
     scope (exit)
         res.remove.collectException!FileException;
+
+    auto cd = meta.centralDirectories[0];
+    auto fh = meta.localFileHeaders[0];
 
     auto resFile = File(res, "rb");
     resFile.size.should.equal(bytes.length + prepended.length);

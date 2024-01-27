@@ -75,19 +75,14 @@ private int run(in Opts opts)
 
         if (prependFile.empty)
         {
-            if (outputFile.empty)
+            if (!outputFile.empty)
             {
-
-            }
-            else
-            {
-                // TODO 
-                //mfile.writeArchive(eocd, verbose, outputFile);
+                //tempFile = mfile.writeArchive(meta, verbose, outputFile);
             }
         }
         else
         {
-            tempFile = mfile.prependFileToArchive(prependFile, eocd, verbose);
+            tempFile = mfile.prependFileToArchive(prependFile, meta, verbose);
         }
     }
 
@@ -124,19 +119,18 @@ private void printSummary(in EndOfCentralDirectory eocd,
     }
     if (verbose)
     {
-        cwriteln("<green>=== End of Central Directory:</green>");
-        writeln(eocd);
-
-        cwriteln("<green>=== Central Directory Entries:</green>");
-        foreach (entry; meta.centralDirectories)
-        {
-            writeln(entry);
-        }
         cwriteln("<green>=== Local file headers:</green>");
         foreach (lfh; meta.localFileHeaders)
         {
             writeln(lfh);
         }
+        cwriteln("<green>=== Central Directory Entries:</green>");
+        foreach (entry; meta.centralDirectories)
+        {
+            writeln(entry);
+        }
+        cwriteln("<green>=== End of Central Directory:</green>");
+        writeln(eocd);
     }
 
     if (!meta.zipStart.isNull)

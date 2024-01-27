@@ -22,6 +22,7 @@ struct ZipArchiveMetadata
     uint[CompressionMethod] compressionMethodCount;
     CentralDirectory[] centralDirectories;
     LocalFileHeader[] localFileHeaders;
+    EndOfCentralDirectory eocd;
 }
 
 /// Parse and collect all the Zip archive metadata.
@@ -30,7 +31,7 @@ struct ZipArchiveMetadata
 ///   bytes = zip archive source of bytes
 ///   eocd = end of central directory structure
 /// Returns: the metadata for the zip archive.
-ZipArchiveMetadata getArchiveMetadata(B)(ref B bytes, in EndOfCentralDirectory eocd)
+ZipArchiveMetadata getArchiveMetadata(B)(ref B bytes, ref EndOfCentralDirectory eocd)
 {
     Nullable!size_t zipStart;
     uint offset = eocd.startOfCentralDirectory;
@@ -42,7 +43,7 @@ ZipArchiveMetadata getArchiveMetadata(B)(ref B bytes, in EndOfCentralDirectory e
     foreach (i; iota(0, eocd.diskCentralDirectoriesCount))
     {
         auto cd = parseCd(cast(ubyte[]) bytes[offset .. $]);
-        centralDirs ~= cd;
+        centralDirs[i] = cd;
         zipStart = zipStart.isNull
             ? cd.startOfLocalFileHeader
             : min(cd.startOfLocalFileHeader, zipStart.get);
@@ -51,7 +52,7 @@ ZipArchiveMetadata getArchiveMetadata(B)(ref B bytes, in EndOfCentralDirectory e
         offset += cd.length;
         compressionCount.require(cd.compressionMethod)++;
         auto lfh = parseLocalFileHeader(cast(ubyte[]) bytes[cd.startOfLocalFileHeader .. $]);
-        fileHeaders ~= lfh;
+        fileHeaders[i] = lfh;
     }
     ZipArchiveMetadata result = {
         zipStart: zipStart,
@@ -60,6 +61,7 @@ ZipArchiveMetadata getArchiveMetadata(B)(ref B bytes, in EndOfCentralDirectory e
         compressionMethodCount: compressionCount,
         centralDirectories: centralDirs,
         localFileHeaders: fileHeaders,
+        eocd: eocd,
     };
     return result;
 }
@@ -73,11 +75,13 @@ ZipArchiveMetadata getArchiveMetadata(B)(ref B bytes, in EndOfCentralDirectory e
 /// Params:
 ///   bytes = zip archive source of bytes
 ///   prependFile = file to prepend
-///   eocd = end of central directory structure
+///   meta = the zip archive metadata
 ///   verbose = whether to log verbose output
 /// Returns: the temp file the output is written to.
-string prependFileToArchive(B)(ref B bytes, string prependFile, EndOfCentralDirectory eocd, bool verbose = false)
+string prependFileToArchive(B)(ref B bytes, string prependFile, ZipArchiveMetadata meta, bool verbose = false)
 {
+    import std.range : lockstep;
+
     auto outfile = File(tempDir.chainPath("dzipper-" ~ uniform(0, uint.max).to!string).array, "wb");
     if (verbose)
     {
@@ -89,47 +93,35 @@ string prependFileToArchive(B)(ref B bytes, string prependFile, EndOfCentralDire
         pf.copyFile(outfile);
     }
 
-    auto archiveStart = cast(size_t) outfile.tell();
-
-    uint offset = eocd.startOfCentralDirectory;
-    Nullable!size_t zipStart;
-
-    // first, write all local file headers and the file contents
-    foreach (i; iota(0, eocd.diskCentralDirectoriesCount))
-    {
-        auto cd = parseCd(cast(ubyte[]) bytes[offset .. $]);
-        auto lfh = parseLocalFileHeader(cast(ubyte[]) bytes[cd.startOfLocalFileHeader .. $]);
-        zipStart = zipStart.isNull
-            ? cd.startOfLocalFileHeader
-            : min(cd.startOfLocalFileHeader, zipStart.get);
-
-        if (verbose)
-            writeln("Adding entry: ", lfh.fileName);
-        auto lfhEnd = cd.startOfLocalFileHeader + lfh.length;
-        outfile.rawWrite(bytes[cd.startOfLocalFileHeader .. lfhEnd]);
-        outfile.rawWrite(bytes[lfhEnd .. (lfhEnd + lfh.compressedSize)]);
-        offset += cd.length;
-    }
-
-    if (zipStart.isNull)
+    if (meta.zipStart.isNull)
         return outfile.name.dup;
 
-    const size_t shift = archiveStart - zipStart.get;
-    offset = eocd.startOfCentralDirectory;
+    auto archiveStart = cast(size_t) outfile.tell();
+
+    // first, write all local file headers and the file contents
+    foreach (ref lfh, cd; meta.localFileHeaders.lockstep(meta.centralDirectories))
+    {
+        if (verbose)
+            writeln("Adding entry: ", lfh.fileName);
+        outfile.rawWrite(lfh.toBytes);
+        auto lfhEnd = cd.startOfLocalFileHeader + lfh.length;
+        outfile.rawWrite(bytes[lfhEnd .. (lfhEnd + lfh.compressedSize)]);
+    }
+
+    const size_t shift = archiveStart - meta.zipStart.get;
 
     if (verbose)
         writeln("Shifting zip archive offsets by ", shift);
 
     // now, write all central directories
-    foreach (i; iota(0, eocd.diskCentralDirectoriesCount))
+    foreach (cd; meta.centralDirectories)
     {
-        auto cd = parseCd(cast(ubyte[]) bytes[offset .. $]);
         cd.startOfLocalFileHeader += shift;
         outfile.rawWrite(cd.toBytes);
-        offset += cd.length;
     }
 
     // write the end-of-central-directory
+    auto eocd = meta.eocd;
     eocd.startOfCentralDirectory += shift;
     outfile.rawWrite(eocd.toBytes);
 
@@ -179,6 +171,40 @@ ubyte[] toBytes(in CentralDirectory cd)
     ap.put(cast(const(ubyte)[])(cd.fileName));
     ap.put(cd.extraField);
     ap.put(cd.comment);
+    return bytes;
+}
+
+/// Create a byte array representing a Local File Header.
+///
+/// The bytes are returned as they would appear in a zip archive,
+/// i.e. using little endian representation.
+/// 
+/// Params:
+///   cd = the local file header
+/// Returns: byte array in little endian
+ubyte[] toBytes(in LocalFileHeader lfh)
+{
+    import std.datetime.systime : SysTimeToDosFileTime;
+
+    auto bytes = new ubyte[lfh.length];
+    auto ap = appender(&bytes);
+    ap.shrinkTo(0);
+    ap.appends(LOCAL_FILE_SIGNATURE_UINT);
+    ap.appends(lfh.versionRequired);
+    ap.appends(lfh.generalPurposeBitFlag);
+    ap.appends(lfh.compressionMethod);
+    const dosTime = SysTimeToDosFileTime(lfh.lastModificationDateTime);
+    // time is on the lo bytes
+    ap.appends(cast(ushort)(dosTime & 0xFFFF));
+    // date is on the hi bytes
+    ap.appends(cast(ushort)((dosTime >> 16) & 0xFFFF));
+    ap.appends(lfh.crc32);
+    ap.appends(lfh.compressedSize);
+    ap.appends(lfh.uncompressedSize);
+    ap.appends(lfh.fileNameLength);
+    ap.appends(lfh.extraFieldLength);
+    ap.put(cast(const(ubyte)[])(lfh.fileName));
+    ap.put(lfh.extraField);
     return bytes;
 }
 
