@@ -132,7 +132,7 @@ private void printSummary(in EndOfCentralDirectory eocd,
         {
             writeln(entry);
         }
-        writeln("<green>=== Local file headers:</green>");
+        cwriteln("<green>=== Local file headers:</green>");
         foreach (lfh; meta.localFileHeaders)
         {
             writeln(lfh);
@@ -140,7 +140,7 @@ private void printSummary(in EndOfCentralDirectory eocd,
     }
 
     if (!meta.zipStart.isNull)
-        cwritefln("Start index: <blue>%d</blue>", meta.zipStart.get);
+        cwritefln("Start index: <blue>%,3d</blue>", meta.zipStart.get);
 
     cwritefln("Entries total compressed size: <blue>%,3.0f</blue>", meta.totalCompressed);
     cwritefln("Entries total uncompressed size: <blue>%,3.0f</blue>", meta.totalUncompressed);
@@ -150,6 +150,6 @@ private void printSummary(in EndOfCentralDirectory eocd,
 
     foreach (cm, count; meta.compressionMethodCount)
     {
-        cwritefln("  - %s: <blue>%d</blue>", cm, count);
+        cwritefln("  - %s: <blue>%3,d</blue>", cm, count);
     }
 }

@@ -1,10 +1,8 @@
 module dzipper.model;
 
 import std.traits : FieldNameTuple;
-import std.format : FormatSpec;
 import std.array : appender;
 import std.conv : to;
-import std.range : put;
 import std.bitmanip : nativeToLittleEndian;
 import std.datetime.systime : SysTime;
 
@@ -23,20 +21,19 @@ immutable(ubyte[]) LOCAL_FILE_SIGNATURE = nativeToLittleEndian(LOCAL_FILE_SIGNAT
 
 private mixin template StructToString(S)
 {
-    void toString(scope void delegate(const(char)[]) sink,
-        FormatSpec!char fmt)
+    void toString(scope void delegate(const(char)[]) sink) const
     {
-        put(sink, typeid(S).toString);
-        put(sink, "(\n");
-        foreach (index, name; FieldNameTuple!S)
+        sink(typeid(S).toString);
+        sink("(\n");
+        static foreach (index, name; FieldNameTuple!S)
         {
-            put(sink, "  ");
-            put(sink, name);
-            put(sink, ": ");
-            put(sink, this.tupleof[index].to!string);
-            put(sink, ",\n");
+            sink("  ");
+            sink(name);
+            sink(": ");
+            sink(this.tupleof[index].to!string);
+            sink(",\n");
         }
-        put(sink, ")");
+        sink(")");
     }
 }
 
